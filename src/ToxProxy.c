@@ -32,6 +32,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 #include <sodium/utils.h>
 #include <tox/tox.h>
 
+#include <time.h>
+#include <sys/time.h>
+
 
 typedef struct DHT_node {
     const char *ip;
@@ -115,31 +118,42 @@ void bootstrap(Tox *tox)
     }
 }
 
-void print_tox_id(Tox *tox)
+void print_startup_message(Tox *tox)
 {
     uint8_t tox_id_bin[tox_address_size()];
     tox_self_get_address(tox, tox_id_bin);
     char tox_id_hex[tox_address_hex_size];
     bin2upHex(tox_id_bin, tox_address_size(), tox_id_hex, tox_address_hex_size);
-    printf("Tox ID: %s\n", tox_id_hex);
+
+    size_t friends = tox_self_get_friend_list_size(tox);
+	time_t t = time(NULL);
+	struct tm tm = *localtime(&t);
+    printf("%d-%02d-%02d %02d:%02d:%02d ToxProxy startup completed. My Tox ID = %s ; Number of friends = %zu\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tox_id_hex, friends);
+
 }
 
 void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length)
 {
-    printf("New message from %s - content: %s\n", sender_key_hex, message);
+	time_t t = time(NULL);
+	struct tm tm = *localtime(&t);
+    printf("%d-%02d-%02d %02d:%02d:%02d New message from %s: %s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, sender_key_hex, message);
 }
 
 void friend_request_cb(Tox *tox, const uint8_t *public_key, const uint8_t *message, size_t length,
                                    void *user_data)
 {
+	time_t t = time(NULL);
+	struct tm tm = *localtime(&t);
+
+    char public_key_hex[tox_public_key_hex_size];
+	bin2upHex(public_key, tox_public_key_size, &public_key_hex, tox_public_key_hex_size);
+
     size_t friends = tox_self_get_friend_list_size(tox);
-    printf("Number of Friends: %zu\n", friends);
+    printf("%d-%02d-%02d %02d:%02d:%02d Got currently %zu friends. New friend request from %s with message: %s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, friends, public_key_hex, message);
 
     tox_friend_add_norequest(tox, public_key, NULL);
     update_savedata_file(tox);
 
-    char public_key_hex[tox_public_key_hex_size];
-	bin2upHex(public_key, tox_public_key_size, &public_key_hex, tox_public_key_hex_size);
 
     printf("Added new Friend with public key: %s\n", public_key_hex);
     writeMessage(&public_key_hex, message, length);
@@ -170,15 +184,19 @@ void friend_message_cb(Tox *tox, uint32_t friend_number, TOX_MESSAGE_TYPE type, 
 
 void self_connection_status_cb(Tox *tox, TOX_CONNECTION connection_status, void *user_data)
 {
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	struct tm tm = *localtime(tv.tv_sec);
+
     switch (connection_status) {
         case TOX_CONNECTION_NONE:
-            printf("Offline\n");
+        	printf("%d-%02d-%02d %02d:%02d:%02d.%ld Connection Status changed to: Offline\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
             break;
         case TOX_CONNECTION_TCP:
-            printf("Online, using TCP\n");
+        	printf("%d-%02d-%02d %02d:%02d:%02d.%ld Connection Status changed to: Online via TCP\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
             break;
         case TOX_CONNECTION_UDP:
-            printf("Online, using UDP\n");
+        	printf("%d-%02d-%02d %02d:%02d:%02d.%ld Connection Status changed to: Online via UDP\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
             break;
     }
 }
@@ -198,7 +216,7 @@ int main()
 
     bootstrap(tox);
 
-    print_tox_id(tox);
+    print_startup_message(tox);
 
     tox_callback_friend_request(tox, friend_request_cb);
     tox_callback_friend_message(tox, friend_message_cb);
@@ -206,9 +224,6 @@ int main()
     tox_callback_self_connection_status(tox, self_connection_status_cb);
 
     update_savedata_file(tox);
-
-    size_t friends = tox_self_get_friend_list_size(tox);
-    printf("Number of Friends: %zu\n", friends);
 
     while (1) {
         tox_iterate(tox, NULL);
