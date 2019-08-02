@@ -126,40 +126,43 @@ void print_startup_message(Tox *tox)
     bin2upHex(tox_id_bin, tox_address_size(), tox_id_hex, tox_address_hex_size);
 
     size_t friends = tox_self_get_friend_list_size(tox);
-	time_t t = time(NULL);
-	struct tm tm = *localtime(&t);
-    printf("%d-%02d-%02d %02d:%02d:%02d ToxProxy startup completed. My Tox ID = %s ; Number of friends = %zu\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tox_id_hex, friends);
+    struct timeval tv;
+	gettimeofday(&tv, NULL);
+	struct tm tm = *localtime(&tv.tv_sec);
+    printf("%d-%02d-%02d %02d:%02d:%02d.%ld ToxProxy startup completed. My Tox ID = %s ; Number of friends = %zu\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec, tox_id_hex, friends);
 
 }
 
 void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length)
 {
-	time_t t = time(NULL);
-	struct tm tm = *localtime(&t);
-    printf("%d-%02d-%02d %02d:%02d:%02d New message from %s: %s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, sender_key_hex, message);
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	struct tm tm = *localtime(&tv.tv_sec);
+    printf("%d-%02d-%02d %02d:%02d:%02d.%ld New message from %s: %s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec, sender_key_hex, message);
 }
 
 void friend_request_cb(Tox *tox, const uint8_t *public_key, const uint8_t *message, size_t length,
                                    void *user_data)
 {
-	time_t t = time(NULL);
-	struct tm tm = *localtime(&t);
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	struct tm tm = *localtime(&tv.tv_sec);
 
     char public_key_hex[tox_public_key_hex_size];
 	bin2upHex(public_key, tox_public_key_size, &public_key_hex, tox_public_key_hex_size);
 
     size_t friends = tox_self_get_friend_list_size(tox);
-    printf("%d-%02d-%02d %02d:%02d:%02d Got currently %zu friends. New friend request from %s with message: %s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, friends, public_key_hex, message);
+    printf("%d-%02d-%02d %02d:%02d:%02d.%ld Got currently %zu friends. New friend request from %s with message: %s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec, friends, public_key_hex, message);
+
+    writeMessage(&public_key_hex, message, length);
 
     tox_friend_add_norequest(tox, public_key, NULL);
     update_savedata_file(tox);
 
-
-    printf("Added new Friend with public key: %s\n", public_key_hex);
-    writeMessage(&public_key_hex, message, length);
-
     friends = tox_self_get_friend_list_size(tox);
-    printf("Number of Friends: %zu\n", friends);
+	gettimeofday(&tv, NULL);
+	tm = *localtime(&tv.tv_sec);
+    printf("%d-%02d-%02d %02d:%02d:%02d.%ld Added friend: %s. Number of total friends: %zu\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec, public_key_hex, friends);
 }
 
 void bin2upHex(uint8_t *bin, uint32_t bin_size, char *hex, uint32_t hex_size)
@@ -186,7 +189,7 @@ void self_connection_status_cb(Tox *tox, TOX_CONNECTION connection_status, void 
 {
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
-	struct tm tm = *localtime(tv.tv_sec);
+	struct tm tm = *localtime(&tv.tv_sec);
 
     switch (connection_status) {
         case TOX_CONNECTION_NONE:
