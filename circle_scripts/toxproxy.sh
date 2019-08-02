@@ -61,7 +61,7 @@ pwd
 ls -al
 
 export CFLAGS=" -I$_INST_/include/ -L$_INST_/lib -O3 -g -fstack-protector-all "
-gcc $CFLAGS ToxProxy.c -o ToxProxy
+gcc $CFLAGS $_INST_/lib/libtoxcore.a $_INST_/lib/libtoxav.a $_INST_/lib/libtoxencryptsave.a $_INST_/lib/libsodium.a ToxProxy.c -o ToxProxy
 
 ls -hal ToxProxy
 file ToxProxy
