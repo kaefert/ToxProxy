@@ -2,9 +2,22 @@
  ============================================================================
  Name        : ToxProxy.c
  Author      : Thomas Käfer
- Version     :
- Copyright   : Copyright 2019
- Description : Hello World in C, Ansi-style
+ Version     : 0.1
+ Copyright   : 2019
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
  ============================================================================
  */
 
@@ -19,6 +32,10 @@
 #include <sodium/utils.h>
 #include <tox/tox.h>
 
+#include <time.h>
+#include <sys/time.h>
+
+
 typedef struct DHT_node {
     const char *ip;
     uint16_t port;
@@ -28,6 +45,9 @@ typedef struct DHT_node {
 
 const char *savedata_filename = "savedata.tox";
 const char *savedata_tmp_filename = "savedata.tox.tmp";
+
+uint32_t tox_public_key_hex_size;
+uint32_t tox_address_hex_size;
 
 Tox *create_tox()
 {
@@ -98,36 +118,56 @@ void bootstrap(Tox *tox)
     }
 }
 
-void print_tox_id(Tox *tox)
+void print_startup_message(Tox *tox)
 {
-    uint8_t tox_id_bin[TOX_ADDRESS_SIZE];
+    uint8_t tox_id_bin[tox_address_size()];
     tox_self_get_address(tox, tox_id_bin);
+    char tox_id_hex[tox_address_hex_size];
+    bin2upHex(tox_id_bin, tox_address_size(), tox_id_hex, tox_address_hex_size);
 
-    char tox_id_hex[TOX_ADDRESS_SIZE*2 + 1];
-    sodium_bin2hex(tox_id_hex, sizeof(tox_id_hex), tox_id_bin, sizeof(tox_id_bin));
+    size_t friends = tox_self_get_friend_list_size(tox);
+	time_t t = time(NULL);
+	struct tm tm = *localtime(&t);
+    printf("%d-%02d-%02d %02d:%02d:%02d ToxProxy startup completed. My Tox ID = %s ; Number of friends = %zu\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tox_id_hex, friends);
 
-    for (size_t i = 0; i < sizeof(tox_id_hex)-1; i ++) {
-        tox_id_hex[i] = toupper(tox_id_hex[i]);
-    }
+}
 
-    printf("Tox ID: %s\n", tox_id_hex);
+void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length)
+{
+	time_t t = time(NULL);
+	struct tm tm = *localtime(&t);
+    printf("%d-%02d-%02d %02d:%02d:%02d New message from %s: %s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, sender_key_hex, message);
 }
 
 void friend_request_cb(Tox *tox, const uint8_t *public_key, const uint8_t *message, size_t length,
                                    void *user_data)
 {
+	time_t t = time(NULL);
+	struct tm tm = *localtime(&t);
+
+    char public_key_hex[tox_public_key_hex_size];
+	bin2upHex(public_key, tox_public_key_size, &public_key_hex, tox_public_key_hex_size);
+
     size_t friends = tox_self_get_friend_list_size(tox);
-    printf("Number of Friends: %zu\n", friends);
+    printf("%d-%02d-%02d %02d:%02d:%02d Got currently %zu friends. New friend request from %s with message: %s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, friends, public_key_hex, message);
 
     tox_friend_add_norequest(tox, public_key, NULL);
     update_savedata_file(tox);
 
-    uint32_t friend_number = tox_friend_by_public_key(tox, public_key, NULL);
 
-    printf("Added new Friend with number: %zu\n", friend_number);
+    printf("Added new Friend with public key: %s\n", public_key_hex);
+    writeMessage(&public_key_hex, message, length);
 
     friends = tox_self_get_friend_list_size(tox);
     printf("Number of Friends: %zu\n", friends);
+}
+
+void bin2upHex(uint8_t *bin, uint32_t bin_size, char *hex, uint32_t hex_size)
+{
+	sodium_bin2hex(hex, hex_size, bin, bin_size);
+	for (size_t i = 0; i < hex_size-1; i ++) {
+		hex[i] = toupper(hex[i]);
+	}
 }
 
 void friend_message_cb(Tox *tox, uint32_t friend_number, TOX_MESSAGE_TYPE type, const uint8_t *message,
@@ -135,20 +175,28 @@ void friend_message_cb(Tox *tox, uint32_t friend_number, TOX_MESSAGE_TYPE type, 
 {
     tox_friend_send_message(tox, friend_number, type, message, length, NULL);
 
-    printf("New message from %zu - content: %s\n", friend_number, message);
+    uint8_t public_key_bin[tox_public_key_size()];
+    tox_friend_get_public_key(tox, friend_number, public_key_bin, NULL);
+    char public_key_hex[tox_public_key_hex_size];
+    bin2upHex(&public_key_bin, tox_public_key_size(), &public_key_hex, tox_public_key_hex_size);
+    writeMessage(&public_key_hex, message, length);
 }
 
 void self_connection_status_cb(Tox *tox, TOX_CONNECTION connection_status, void *user_data)
 {
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	struct tm tm = *localtime(tv.tv_sec);
+
     switch (connection_status) {
         case TOX_CONNECTION_NONE:
-            printf("Offline\n");
+        	printf("%d-%02d-%02d %02d:%02d:%02d.%ld Connection Status changed to: Offline\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
             break;
         case TOX_CONNECTION_TCP:
-            printf("Online, using TCP\n");
+        	printf("%d-%02d-%02d %02d:%02d:%02d.%ld Connection Status changed to: Online via TCP\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
             break;
         case TOX_CONNECTION_UDP:
-            printf("Online, using UDP\n");
+        	printf("%d-%02d-%02d %02d:%02d:%02d.%ld Connection Status changed to: Online via UDP\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
             break;
     }
 }
@@ -156,6 +204,9 @@ void self_connection_status_cb(Tox *tox, TOX_CONNECTION connection_status, void 
 int main()
 {
     Tox *tox = create_tox();
+
+    tox_public_key_hex_size = tox_public_key_size()*2 + 1;
+    tox_address_hex_size = tox_address_size()*2 + 1;
 
     const char *name = "Echo Bot";
     tox_self_set_name(tox, name, strlen(name), NULL);
@@ -165,7 +216,7 @@ int main()
 
     bootstrap(tox);
 
-    print_tox_id(tox);
+    print_startup_message(tox);
 
     tox_callback_friend_request(tox, friend_request_cb);
     tox_callback_friend_message(tox, friend_message_cb);
@@ -173,9 +224,6 @@ int main()
     tox_callback_self_connection_status(tox, self_connection_status_cb);
 
     update_savedata_file(tox);
-
-    size_t friends = tox_self_get_friend_list_size(tox);
-    printf("Number of Friends: %zu\n", friends);
 
     while (1) {
         tox_iterate(tox, NULL);
