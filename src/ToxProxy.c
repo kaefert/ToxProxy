@@ -2,7 +2,7 @@
  ============================================================================
  Name        : ToxProxy.c
  Author      : Thomas Käfer
- Version     :
+ Version     : 0.1
  Copyright   : 2019
 
 This program is free software: you can redistribute it and/or modify
@@ -12,11 +12,11 @@ License, or (at your option) any later version.
 
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Affero General Public License for more details.
 
 You should have received a copy of the GNU Affero General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
  ============================================================================
  */
@@ -32,6 +32,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <sodium/utils.h>
 #include <tox/tox.h>
 
+
 typedef struct DHT_node {
     const char *ip;
     uint16_t port;
@@ -41,6 +42,9 @@ typedef struct DHT_node {
 
 const char *savedata_filename = "savedata.tox";
 const char *savedata_tmp_filename = "savedata.tox.tmp";
+
+uint32_t tox_public_key_hex_size;
+uint32_t tox_address_hex_size;
 
 Tox *create_tox()
 {
@@ -113,17 +117,16 @@ void bootstrap(Tox *tox)
 
 void print_tox_id(Tox *tox)
 {
-    uint8_t tox_id_bin[TOX_ADDRESS_SIZE];
+    uint8_t tox_id_bin[tox_address_size()];
     tox_self_get_address(tox, tox_id_bin);
-
-    char tox_id_hex[TOX_ADDRESS_SIZE*2 + 1];
-    sodium_bin2hex(tox_id_hex, sizeof(tox_id_hex), tox_id_bin, sizeof(tox_id_bin));
-
-    for (size_t i = 0; i < sizeof(tox_id_hex)-1; i ++) {
-        tox_id_hex[i] = toupper(tox_id_hex[i]);
-    }
-
+    char tox_id_hex[tox_address_hex_size];
+    bin2upHex(tox_id_bin, tox_address_size(), tox_id_hex, tox_address_hex_size);
     printf("Tox ID: %s\n", tox_id_hex);
+}
+
+void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length)
+{
+    printf("New message from %s - content: %s\n", sender_key_hex, message);
 }
 
 void friend_request_cb(Tox *tox, const uint8_t *public_key, const uint8_t *message, size_t length,
@@ -135,12 +138,22 @@ void friend_request_cb(Tox *tox, const uint8_t *public_key, const uint8_t *messa
     tox_friend_add_norequest(tox, public_key, NULL);
     update_savedata_file(tox);
 
-    uint32_t friend_number = tox_friend_by_public_key(tox, public_key, NULL);
+    char public_key_hex[tox_public_key_hex_size];
+	bin2upHex(public_key, tox_public_key_size, &public_key_hex, tox_public_key_hex_size);
 
-    printf("Added new Friend with number: %zu\n", friend_number);
+    printf("Added new Friend with public key: %s\n", public_key_hex);
+    writeMessage(&public_key_hex, message, length);
 
     friends = tox_self_get_friend_list_size(tox);
     printf("Number of Friends: %zu\n", friends);
+}
+
+void bin2upHex(uint8_t *bin, uint32_t bin_size, char *hex, uint32_t hex_size)
+{
+	sodium_bin2hex(hex, hex_size, bin, bin_size);
+	for (size_t i = 0; i < hex_size-1; i ++) {
+		hex[i] = toupper(hex[i]);
+	}
 }
 
 void friend_message_cb(Tox *tox, uint32_t friend_number, TOX_MESSAGE_TYPE type, const uint8_t *message,
@@ -148,7 +161,11 @@ void friend_message_cb(Tox *tox, uint32_t friend_number, TOX_MESSAGE_TYPE type, 
 {
     tox_friend_send_message(tox, friend_number, type, message, length, NULL);
 
-    printf("New message from %zu - content: %s\n", friend_number, message);
+    uint8_t public_key_bin[tox_public_key_size()];
+    tox_friend_get_public_key(tox, friend_number, public_key_bin, NULL);
+    char public_key_hex[tox_public_key_hex_size];
+    bin2upHex(&public_key_bin, tox_public_key_size(), &public_key_hex, tox_public_key_hex_size);
+    writeMessage(&public_key_hex, message, length);
 }
 
 void self_connection_status_cb(Tox *tox, TOX_CONNECTION connection_status, void *user_data)
@@ -169,6 +186,9 @@ void self_connection_status_cb(Tox *tox, TOX_CONNECTION connection_status, void 
 int main()
 {
     Tox *tox = create_tox();
+
+    tox_public_key_hex_size = tox_public_key_size()*2 + 1;
+    tox_address_hex_size = tox_address_size()*2 + 1;
 
     const char *name = "Echo Bot";
     tox_self_set_name(tox, name, strlen(name), NULL);
