@@ -86,6 +86,7 @@ ls -hal ToxProxy
 file ToxProxy
 ldd ToxProxy
 
+mkdir -p ~/work/artefacts/
 cp -av ToxProxy ~/work/artefacts/
 
 # -------------- now compile toxproxy ----------------------
