@@ -3,8 +3,7 @@
 _HOME_="$(pwd)"
 export _HOME_
 
-cd "$1"
-_CTC_SRC_DIR_="$(pwd)"
+_CTC_SRC_DIR_="/root/work/c-toxcore"
 export _CTC_SRC_DIR_
 
 export _SRC_=$_HOME_/src/
@@ -22,10 +21,14 @@ mkdir -p $_INST_
 export LD_LIBRARY_PATH=$_INST_/lib/
 export PKG_CONFIG_PATH=$_INST_/lib/pkgconfig
 
+cd /root/work/
+git clone https://github.com/zoff99/c-toxcore "$_CTC_SRC_DIR_"/
+
 cd "$_CTC_SRC_DIR_"/
 pwd
 ls -al
 
+git checkout zoff99/zoxcore_local_fork
 
 ./autogen.sh
 make clean
