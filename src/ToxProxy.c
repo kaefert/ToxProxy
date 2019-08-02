@@ -29,12 +29,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #include <unistd.h>
 
+// gives bin2hex & hex2bin functions for Tox-ID / public-key conversions
 #include <sodium/utils.h>
+
+// tox core
 #include <tox/tox.h>
 
+// timestamps for printf output
 #include <time.h>
 #include <sys/time.h>
 
+// mkdir -> https://linux.die.net/man/2/mkdir
+#include <sys/stat.h>
+#include <sys/types.h>
 
 typedef struct DHT_node {
     const char *ip;
@@ -139,6 +146,27 @@ void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length)
 	gettimeofday(&tv, NULL);
 	struct tm tm = *localtime(&tv.tv_sec);
     printf("%d-%02d-%02d %02d:%02d:%02d.%ld New message from %s: %s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec, sender_key_hex, message);
+
+    const char *msgsDir = "./messages";
+    char userDir[tox_public_key_hex_size+strlen(msgsDir)+1];
+    strcpy(userDir, msgsDir);
+    strcat(userDir, "/");
+    strcat(userDir, sender_key_hex);
+
+    mkdir(msgsDir, NULL);
+    mkdir(userDir, NULL);
+
+    char timestamp[4+1+2+1+2+1+4+1+2+1+6] = "0000-00-00_0000-00,000000";
+    int len = snprintf(timestamp, sizeof(timestamp), "%d-%02d-%02d_%02d%02d-%02d,%ld", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
+
+    char msgPath[sizeof(userDir)+sizeof(timestamp)+1];
+    strcpy(msgPath, userDir);
+    strcat(msgPath, "/");
+    strcat(msgPath, timestamp);
+
+    FILE *f = fopen(msgPath, "wb");
+    fwrite(message, length, 1, f);
+    fclose(f);
 }
 
 void friend_request_cb(Tox *tox, const uint8_t *public_key, const uint8_t *message, size_t length,
