@@ -35,7 +35,7 @@ make clean
 export CFLAGS_=" $CF2 -D_GNU_SOURCE -I$_INST_/include/ -O3 -g -fstack-protector-all "
 export CFLAGS="$CFLAGS_"
 # export CFLAGS=" $CFLAGS -Werror=div-by-zero -Werror=format=2 -Werror=implicit-function-declaration "
-export LDFLAGS=-L$_INST_/lib
+export LDFLAGS="-L$_INST_/lib"
 
 ./configure \
 --prefix=$_INST_ \
@@ -52,6 +52,19 @@ export LDFLAGS=" $LDFLAGS_ -fPIC "
 
 # -------------- now compile toxproxy ----------------------
 
-echo "dummy"
+cd /root/work/
+pwd
+ls -al
+
+cd src/
+pwd
+ls -al
+
+export CFLAGS=" -I$_INST_/include/ -L$_INST_/lib -O3 -g -fstack-protector-all "
+gcc $CFLAGS ToxProxy.c -o ToxProxy
+
+ls -hal ToxProxy
+file ToxProxy
+ldd ToxProxy
 
 # -------------- now compile toxproxy ----------------------
