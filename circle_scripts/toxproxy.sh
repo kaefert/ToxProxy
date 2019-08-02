@@ -60,8 +60,21 @@ cd src/
 pwd
 ls -al
 
-export CFLAGS=" -I$_INST_/include/ -L$_INST_/lib -O3 -g -fstack-protector-all "
-gcc $CFLAGS $_INST_/lib/libtoxcore.a $_INST_/lib/libtoxav.a $_INST_/lib/libtoxencryptsave.a $_INST_/lib/libsodium.a ToxProxy.c -o ToxProxy
+export CFLAGS=" -fPIC -std=gnu99 -I$_INST_/include/ -L$_INST_/lib -O3 -g -fstack-protector-all "
+gcc $CFLAGS \
+$_INST_/lib/libtoxcore.a \
+$_INST_/lib/libtoxav.a \
+$_INST_/lib/libtoxencryptsave.a \
+$_INST_/lib/libsodium.a \
+$_INST_/lib/libopus.a \
+$_INST_/lib/libvpx.a \
+$_INST_/lib/libx264.a \
+$_INST_/lib/libavcodec.a \
+$_INST_/lib/libavutil.a \
+$_INST_/lib/libsodium.a \
+-lm \
+-lpthread \
+ToxProxy.c -o ToxProxy
 
 ls -hal ToxProxy
 file ToxProxy
