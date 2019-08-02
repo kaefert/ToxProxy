@@ -64,6 +64,8 @@ echo "--------------"
 ls -al $_INST_/lib/libtoxcore.a
 echo "--------------"
 
+set -x
+
 export CFLAGS=" -fPIC -std=gnu99 -I$_INST_/include/ -L$_INST_/lib -O3 -g -fstack-protector-all "
 gcc $CFLAGS \
 $_INST_/lib/libtoxcore.a \
