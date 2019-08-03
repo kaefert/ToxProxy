@@ -65,7 +65,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 #include <sys/types.h>
 
 
-
+// ------------ forward declarations ------------
+void bin2upHex(const uint8_t *bin, uint32_t bin_size, char *hex, uint32_t hex_size);
+// ------------ forward declarations ------------
 
 
 
@@ -85,8 +87,8 @@ const char *log_filename = "ToxProxy.log";
 const char *savedata_filename = "ToxProxy_SaveData.tox";
 const char *savedata_tmp_filename = "ToxProxy_SaveData.tox.tmp";
 
-uint32_t tox_public_key_hex_size;
-uint32_t tox_address_hex_size;
+uint32_t tox_public_key_hex_size = 32;
+uint32_t tox_address_hex_size = 64;
 int tox_loop_running = 1;
 
 
@@ -204,9 +206,14 @@ Tox *create_tox()
         long fsize = ftell(f);
         fseek(f, 0, SEEK_SET);
 
-        char *savedata = malloc(fsize);
+        uint8_t *savedata = malloc(fsize);
 
-        fread(savedata, fsize, 1, f);
+        size_t ret = fread(savedata, fsize, 1, f);
+        // TODO: handle ret return vlaue here!
+        if (ret)
+        {
+            // ------
+        }
         fclose(f);
 
         options.savedata_type = TOX_SAVEDATA_TYPE_TOX_SAVE;
@@ -245,7 +252,7 @@ void sigint_handler(int signo)
 void update_savedata_file(const Tox *tox)
 {
     size_t size = tox_get_savedata_size(tox);
-    char *savedata = malloc(size);
+    uint8_t *savedata = malloc(size);
     tox_get_savedata(tox, savedata);
 
     FILE *f = fopen(savedata_tmp_filename, "wb");
@@ -286,11 +293,9 @@ void print_startup_message(Tox *tox)
     bin2upHex(tox_id_bin, tox_address_size(), tox_id_hex, tox_address_hex_size);
 
     size_t friends = tox_self_get_friend_list_size(tox);
-    struct timeval tv;
-	gettimeofday(&tv, NULL);
-	struct tm tm = *localtime(&tv.tv_sec);
-    printf("%d-%02d-%02d %02d:%02d:%02d.%ld ToxProxy startup completed. My Tox ID = %s ; Number of friends = %zu\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec, tox_id_hex, friends);
-
+    dbg(9, "ToxProxy startup completed\n");
+    dbg(9, "My Tox ID = %s\n", tox_id_hex);
+    dbg(9, "Number of friends = %ld\n", (long)friends);
 }
 
 void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length)
@@ -298,7 +303,7 @@ void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length)
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	struct tm tm = *localtime(&tv.tv_sec);
-    printf("%d-%02d-%02d %02d:%02d:%02d.%ld New message from %s: %s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec, sender_key_hex, message);
+    dbg(2,"New message from %s: %s\n", sender_key_hex, message);
 
     const char *msgsDir = "./messages";
     char userDir[tox_public_key_hex_size+strlen(msgsDir)+1];
@@ -326,28 +331,22 @@ void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length)
 void friend_request_cb(Tox *tox, const uint8_t *public_key, const uint8_t *message, size_t length,
                                    void *user_data)
 {
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	struct tm tm = *localtime(&tv.tv_sec);
-
     char public_key_hex[tox_public_key_hex_size];
-	bin2upHex(public_key, tox_public_key_size, &public_key_hex, tox_public_key_hex_size);
+	bin2upHex(public_key, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
 
     size_t friends = tox_self_get_friend_list_size(tox);
-    printf("%d-%02d-%02d %02d:%02d:%02d.%ld Got currently %zu friends. New friend request from %s with message: %s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec, friends, public_key_hex, message);
+    dbg(2, "Got currently %zu friends. New friend request from %s with message: %s\n", friends, public_key_hex, message);
 
-    writeMessage(&public_key_hex, message, length);
+    writeMessage(public_key_hex, message, length);
 
     tox_friend_add_norequest(tox, public_key, NULL);
     update_savedata_file(tox);
 
     friends = tox_self_get_friend_list_size(tox);
-	gettimeofday(&tv, NULL);
-	tm = *localtime(&tv.tv_sec);
-    printf("%d-%02d-%02d %02d:%02d:%02d.%ld Added friend: %s. Number of total friends: %zu\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec, public_key_hex, friends);
+    dbg(2, "Added friend: %s. Number of total friends: %zu\n", public_key_hex, friends);
 }
 
-void bin2upHex(uint8_t *bin, uint32_t bin_size, char *hex, uint32_t hex_size)
+void bin2upHex(const uint8_t *bin, uint32_t bin_size, char *hex, uint32_t hex_size)
 {
 	sodium_bin2hex(hex, hex_size, bin, bin_size);
 	for (size_t i = 0; i < hex_size-1; i ++) {
@@ -358,15 +357,17 @@ void bin2upHex(uint8_t *bin, uint32_t bin_size, char *hex, uint32_t hex_size)
 void friend_message_cb(Tox *tox, uint32_t friend_number, TOX_MESSAGE_TYPE type, const uint8_t *message,
                                    size_t length, void *user_data)
 {
+    char *default_msg = "YOU are using the old Message format! this is not supported!";
+    
     tox_friend_send_message(tox, friend_number, type,
-                            "YOU are using the old Message format! this is not supported!",
-                            length, NULL);
+                            (uint8_t *)default_msg,
+                            strlen(default_msg), NULL);
 
     uint8_t public_key_bin[tox_public_key_size()];
     tox_friend_get_public_key(tox, friend_number, public_key_bin, NULL);
     char public_key_hex[tox_public_key_hex_size];
-    bin2upHex(&public_key_bin, tox_public_key_size(), &public_key_hex, tox_public_key_hex_size);
-    writeMessage(&public_key_hex, message, length);
+    bin2upHex(public_key_bin, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
+    writeMessage(public_key_hex, message, length);
 }
 
 void friendlist_onConnectionChange(Tox *m, uint32_t num, TOX_CONNECTION connection_status, void *user_data)
@@ -376,19 +377,15 @@ void friendlist_onConnectionChange(Tox *m, uint32_t num, TOX_CONNECTION connecti
 
 void self_connection_status_cb(Tox *tox, TOX_CONNECTION connection_status, void *user_data)
 {
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	struct tm tm = *localtime(&tv.tv_sec);
-
     switch (connection_status) {
         case TOX_CONNECTION_NONE:
-        	printf("%d-%02d-%02d %02d:%02d:%02d.%ld Connection Status changed to: Offline\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
+        	dbg(2, "Connection Status changed to: Offline\n");
             break;
         case TOX_CONNECTION_TCP:
-        	printf("%d-%02d-%02d %02d:%02d:%02d.%ld Connection Status changed to: Online via TCP\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
+        	dbg(2, "Connection Status changed to: Online via TCP\n");
             break;
         case TOX_CONNECTION_UDP:
-        	printf("%d-%02d-%02d %02d:%02d:%02d.%ld Connection Status changed to: Online via UDP\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
+        	dbg(2, "Connection Status changed to: Online via UDP\n");
             break;
     }
 }
@@ -398,6 +395,7 @@ void self_connection_status_cb(Tox *tox, TOX_CONNECTION connection_status, void 
 //
 void send_text_message_to_friend(Tox *tox, uint32_t friend_number, const char *fmt, ...)
 {
+    dbg(9, "sending message to friend %d\n", friend_number);
     char msg2[1000];
     size_t length = 0;
 
@@ -434,8 +432,8 @@ void friend_message_v2_cb(Tox *tox, uint32_t friend_number,
 
     if (message_text)
     {
-        uint32_t ts_sec = tox_messagev2_get_ts_sec(raw_message);
-        uint16_t ts_ms = tox_messagev2_get_ts_ms(raw_message);
+        // uint32_t ts_sec = tox_messagev2_get_ts_sec(raw_message);
+        // uint16_t ts_ms = tox_messagev2_get_ts_ms(raw_message);
         uint32_t text_length = 0;
         bool res = tox_messagev2_get_message_text(raw_message,
                    (uint32_t)raw_message_len,
@@ -463,11 +461,11 @@ int main(int argc, char *argv[])
     tox_public_key_hex_size = tox_public_key_size()*2 + 1;
     tox_address_hex_size = tox_address_size()*2 + 1;
 
-    const char *name = "Echo Bot";
-    tox_self_set_name(tox, name, strlen(name), NULL);
+    const char *name = "ToxProxy";
+    tox_self_set_name(tox, (uint8_t *)name, strlen(name), NULL);
 
-    const char *status_message = "Echoing your messages";
-    tox_self_set_status_message(tox, status_message, strlen(status_message), NULL);
+    const char *status_message = "Proxy for your messages";
+    tox_self_set_status_message(tox, (uint8_t *)status_message, strlen(status_message), NULL);
 
     bootstrap(tox);
 
@@ -477,12 +475,14 @@ int main(int argc, char *argv[])
     tox_callback_friend_message(tox, friend_message_cb);
 
 #ifdef TOX_HAVE_TOXUTIL
+    dbg(9, "using toxutil\n");
     tox_utils_callback_self_connection_status(tox, self_connection_status_cb);
     tox_callback_self_connection_status(tox, tox_utils_self_connection_status_cb);
     tox_utils_callback_friend_connection_status(tox, friendlist_onConnectionChange);
     tox_callback_friend_connection_status(tox, tox_utils_friend_connection_status_cb);
     tox_utils_callback_friend_message_v2(tox, friend_message_v2_cb);
 #else
+    dbg(9, "NOT using toxutil\n");
     tox_callback_self_connection_status(tox, self_connection_status_cb);
     tox_callback_friend_connection_status(tox, friendlist_onConnectionChange);
 #endif
