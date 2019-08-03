@@ -65,12 +65,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 #include <sys/types.h>
 
 
-// ------------ forward declarations ------------
-void bin2upHex(const uint8_t *bin, uint32_t bin_size, char *hex, uint32_t hex_size);
-// ------------ forward declarations ------------
-
-
-
 typedef struct DHT_node {
     const char *ip;
     uint16_t port;
@@ -92,6 +86,14 @@ uint32_t tox_public_key_hex_size = 32;
 uint32_t tox_address_hex_size = 64;
 int tox_loop_running = 1;
 
+
+void bin2upHex(const uint8_t *bin, uint32_t bin_size, char *hex, uint32_t hex_size)
+{
+	sodium_bin2hex(hex, hex_size, bin, bin_size);
+	for (size_t i = 0; i < hex_size-1; i ++) {
+		hex[i] = toupper(hex[i]);
+	}
+}
 
 void toxProxyLog(int level, const char *msg, ...)
 {
@@ -329,14 +331,6 @@ void friend_request_cb(Tox *tox, const uint8_t *public_key, const uint8_t *messa
 
     friends = tox_self_get_friend_list_size(tox);
     toxProxyLog(2, "Added friend: %s. Number of total friends: %zu", public_key_hex, friends);
-}
-
-void bin2upHex(const uint8_t *bin, uint32_t bin_size, char *hex, uint32_t hex_size)
-{
-	sodium_bin2hex(hex, hex_size, bin, bin_size);
-	for (size_t i = 0; i < hex_size-1; i ++) {
-		hex[i] = toupper(hex[i]);
-	}
 }
 
 void friend_message_cb(Tox *tox, uint32_t friend_number, TOX_MESSAGE_TYPE type, const uint8_t *message,
