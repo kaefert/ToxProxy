@@ -192,13 +192,31 @@ void usleep_usec(uint64_t usec)
     nanosleep(&ts, NULL);
 }
 
+void tox_log_cb__custom(Tox *tox, TOX_LOG_LEVEL level, const char *file, uint32_t line, const char *func,
+                        const char *message, void *user_data)
+{
+    dbg(9, "%d:%s:%d:%s:%s\n", (int)level, file, (int)line, func, message);
+}
+
 Tox *create_tox()
 {
-    Tox *tox;
+    Tox *tox = NULL;
 
     struct Tox_Options options;
 
     tox_options_default(&options);
+
+    // ----- set options ------
+    options.ipv6_enabled = true;
+    options.local_discovery_enabled = true;
+    options.hole_punching_enabled = true;
+    options.udp_enabled = true;
+    options.tcp_port = 0; // disable tcp relay function!
+    // ----- set options ------
+
+    // set our own handler for c-toxcore logging messages!!
+    options.log_callback = tox_log_cb__custom;
+
 
     FILE *f = fopen(savedata_filename, "rb");
     if (f) {
@@ -426,6 +444,9 @@ void send_text_message_to_friend(Tox *tox, uint32_t friend_number, const char *f
 void friend_message_v2_cb(Tox *tox, uint32_t friend_number,
                        const uint8_t *raw_message, size_t raw_message_len)
 {
+    
+    dbg(9, "enter friend_message_v2_cb\n");
+    
 #ifdef TOX_HAVE_TOXUTIL
     // now get the real data from msgV2 buffer
     uint8_t *message_text = calloc(1, raw_message_len);
@@ -480,6 +501,15 @@ int main(int argc, char *argv[])
     tox_callback_self_connection_status(tox, tox_utils_self_connection_status_cb);
     tox_utils_callback_friend_connection_status(tox, friendlist_onConnectionChange);
     tox_callback_friend_connection_status(tox, tox_utils_friend_connection_status_cb);
+    tox_callback_friend_lossless_packet(tox, tox_utils_friend_lossless_packet_cb);
+    // tox_utils_callback_file_recv_control(tox, on_file_control);
+    tox_callback_file_recv_control(tox, tox_utils_file_recv_control_cb);
+    // tox_utils_callback_file_chunk_request(tox, on_file_chunk_request);
+    tox_callback_file_chunk_request(tox, tox_utils_file_chunk_request_cb);
+    // tox_utils_callback_file_recv(tox, on_file_recv);
+    tox_callback_file_recv(tox, tox_utils_file_recv_cb);
+    // tox_utils_callback_file_recv_chunk(tox, on_file_recv_chunk);
+    tox_callback_file_recv_chunk(tox, tox_utils_file_recv_chunk_cb);
     tox_utils_callback_friend_message_v2(tox, friend_message_v2_cb);
 #else
     dbg(9, "NOT using toxutil\n");
