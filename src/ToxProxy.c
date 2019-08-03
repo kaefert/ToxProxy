@@ -1,7 +1,7 @@
 /*
  ============================================================================
  Name        : ToxProxy.c
- Author      : Thomas Käfer
+ Authors     : Thomas Käfer, Zoff
  Version     : 0.1
  Copyright   : 2019
 
