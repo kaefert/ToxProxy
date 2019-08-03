@@ -21,19 +21,40 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
  ============================================================================
  */
 
+#define _GNU_SOURCE
+
 #include <ctype.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
+#include <dirent.h>
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/ioctl.h>
 #include <unistd.h>
+#include <getopt.h>
+#include <fcntl.h>
+#include <assert.h>
+#include <errno.h>
+#include <limits.h>
+
+#include <pthread.h>
+
+#include <semaphore.h>
+#include <signal.h>
+#include <linux/sched.h>
 
 // gives bin2hex & hex2bin functions for Tox-ID / public-key conversions
 #include <sodium/utils.h>
 
 // tox core
 #include <tox/tox.h>
+#ifdef TOX_HAVE_TOXUTIL
+    #include <tox/toxutil.h>
+#endif
 
 // timestamps for printf output
 #include <time.h>
@@ -43,6 +64,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 #include <sys/stat.h>
 #include <sys/types.h>
 
+
+
+
+
+
 typedef struct DHT_node {
     const char *ip;
     uint16_t port;
@@ -50,11 +76,119 @@ typedef struct DHT_node {
     unsigned char key_bin[TOX_PUBLIC_KEY_SIZE];
 } DHT_node;
 
+#define CURRENT_LOG_LEVEL 9 // 0 -> error, 1 -> warn, 2 -> info, 9 -> debug
+#define c_sleep(x) usleep_usec(1000*x)
+
+
+FILE *logfile = NULL;
+const char *log_filename = "toxproxy.log";
 const char *savedata_filename = "savedata.tox";
 const char *savedata_tmp_filename = "savedata.tox.tmp";
 
 uint32_t tox_public_key_hex_size;
 uint32_t tox_address_hex_size;
+int tox_loop_running = 1;
+
+
+
+
+
+
+void dbg(int level, const char *fmt, ...)
+{
+    char *level_and_format = NULL;
+    char *fmt_copy = NULL;
+
+    if (fmt == NULL)
+    {
+        return;
+    }
+
+    if (strlen(fmt) < 1)
+    {
+        return;
+    }
+
+    if (!logfile)
+    {
+        return;
+    }
+
+    if ((level < 0) || (level > 9))
+    {
+        level = 0;
+    }
+
+    level_and_format = calloc(1, strlen(fmt) + 3 + 1);
+
+    if (!level_and_format)
+    {
+        return;
+    }
+
+    fmt_copy = level_and_format + 2;
+    strcpy(fmt_copy, fmt);
+    level_and_format[1] = ':';
+
+    if (level == 0)
+    {
+        level_and_format[0] = 'E';
+    }
+    else if (level == 1)
+    {
+        level_and_format[0] = 'W';
+    }
+    else if (level == 2)
+    {
+        level_and_format[0] = 'I';
+    }
+    else
+    {
+        level_and_format[0] = 'D';
+    }
+
+    level_and_format[(strlen(fmt) + 2)] = '\0'; // '\0' or '\n'
+    level_and_format[(strlen(fmt) + 3)] = '\0';
+    time_t t3 = time(NULL);
+    struct tm tm3 = *localtime(&t3);
+    char *level_and_format_2 = calloc(1, strlen(level_and_format) + 5 + 3 + 3 + 1 + 3 + 3 + 3 + 1);
+    level_and_format_2[0] = '\0';
+    snprintf(level_and_format_2, (strlen(level_and_format) + 5 + 3 + 3 + 1 + 3 + 3 + 3 + 1),
+             "%04d-%02d-%02d %02d:%02d:%02d:%s",
+             tm3.tm_year + 1900, tm3.tm_mon + 1, tm3.tm_mday,
+             tm3.tm_hour, tm3.tm_min, tm3.tm_sec, level_and_format);
+
+    if (level <= CURRENT_LOG_LEVEL)
+    {
+        va_list ap;
+        va_start(ap, fmt);
+        vfprintf(logfile, level_and_format_2, ap);
+        va_end(ap);
+    }
+
+    if (level_and_format)
+    {
+        free(level_and_format);
+    }
+
+    if (level_and_format_2)
+    {
+        free(level_and_format_2);
+    }
+}
+
+time_t get_unix_time(void)
+{
+    return time(NULL);
+}
+
+void usleep_usec(uint64_t usec)
+{
+    struct timespec ts;
+    ts.tv_sec = usec / 1000000;
+    ts.tv_nsec = (usec % 1000000) * 1000;
+    nanosleep(&ts, NULL);
+}
 
 Tox *create_tox()
 {
@@ -79,15 +213,34 @@ Tox *create_tox()
         options.savedata_data = savedata;
         options.savedata_length = fsize;
 
+#ifdef TOX_HAVE_TOXUTIL
+        tox = tox_utils_new(&options, NULL);
+#else
         tox = tox_new(&options, NULL);
+#endif
 
         free(savedata);
     } else {
+#ifdef TOX_HAVE_TOXUTIL
+        tox = tox_utils_new(&options, NULL);
+#else
         tox = tox_new(&options, NULL);
+#endif
     }
 
     return tox;
 }
+
+
+void sigint_handler(int signo)
+{
+    if (signo == SIGINT)
+    {
+        printf("received SIGINT, pid=%d\n", getpid());
+        tox_loop_running = 0;
+    }
+}
+
 
 void update_savedata_file(const Tox *tox)
 {
@@ -204,13 +357,20 @@ void bin2upHex(uint8_t *bin, uint32_t bin_size, char *hex, uint32_t hex_size)
 void friend_message_cb(Tox *tox, uint32_t friend_number, TOX_MESSAGE_TYPE type, const uint8_t *message,
                                    size_t length, void *user_data)
 {
-    tox_friend_send_message(tox, friend_number, type, message, length, NULL);
+    tox_friend_send_message(tox, friend_number, type,
+                            "YOU are using the old Message format! this is not supported!",
+                            length, NULL);
 
-    uint8_t public_key_bin[tox_public_key_size()];
-    tox_friend_get_public_key(tox, friend_number, public_key_bin, NULL);
-    char public_key_hex[tox_public_key_hex_size];
-    bin2upHex(&public_key_bin, tox_public_key_size(), &public_key_hex, tox_public_key_hex_size);
-    writeMessage(&public_key_hex, message, length);
+    // uint8_t public_key_bin[tox_public_key_size()];
+    // tox_friend_get_public_key(tox, friend_number, public_key_bin, NULL);
+    // char public_key_hex[tox_public_key_hex_size];
+    // bin2upHex(&public_key_bin, tox_public_key_size(), &public_key_hex, tox_public_key_hex_size);
+    // writeMessage(&public_key_hex, message, length);
+}
+
+void friendlist_onConnectionChange(Tox *m, uint32_t num, TOX_CONNECTION connection_status, void *user_data)
+{
+    dbg(2, "friendlist_onConnectionChange:*READY*:friendnum=%d %d\n", (int)num, (int)connection_status);
 }
 
 void self_connection_status_cb(Tox *tox, TOX_CONNECTION connection_status, void *user_data)
@@ -232,8 +392,71 @@ void self_connection_status_cb(Tox *tox, TOX_CONNECTION connection_status, void 
     }
 }
 
-int main()
+//
+// cut message at 999 chars length !!
+//
+void send_text_message_to_friend(Tox *tox, uint32_t friend_number, const char *fmt, ...)
 {
+    char msg2[1000];
+    size_t length = 0;
+
+    if (fmt == NULL)
+    {
+        dbg(9, "send_text_message_to_friend:no message to send\n");
+        return;
+    }
+
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(msg2, 999, fmt, ap);
+    va_end(ap);
+    length = (size_t)strlen(msg2);
+#ifdef TOX_HAVE_TOXUTIL
+    uint32_t ts_sec = (uint32_t)get_unix_time();
+    tox_util_friend_send_message_v2(tox, friend_number, TOX_MESSAGE_TYPE_NORMAL,
+                                    ts_sec, (const uint8_t *)msg2, length,
+                                    NULL, NULL, NULL,
+                                    NULL);
+#else
+    // old message format, not support by this proxy!
+    tox_friend_send_message(tox, friend_number, TOX_MESSAGE_TYPE_NORMAL, (uint8_t *)msg2, length, NULL);
+#endif
+}
+
+
+void friend_message_v2_cb(Tox *tox, uint32_t friend_number,
+                       const uint8_t *raw_message, size_t raw_message_len)
+{
+#ifdef TOX_HAVE_TOXUTIL
+    // now get the real data from msgV2 buffer
+    uint8_t *message_text = calloc(1, raw_message_len);
+
+    if (message_text)
+    {
+        uint32_t ts_sec = tox_messagev2_get_ts_sec(raw_message);
+        uint16_t ts_ms = tox_messagev2_get_ts_ms(raw_message);
+        uint32_t text_length = 0;
+        bool res = tox_messagev2_get_message_text(raw_message,
+                   (uint32_t)raw_message_len,
+                   (bool)false, (uint32_t)0,
+                   message_text, &text_length);
+        dbg(9, "friend_message_v2_cb:fn=%d res=%d msg=%s\n", (int)friend_number, (int)res,
+            (char *)message_text);
+
+        // for now echo the message back to the friend
+        send_text_message_to_friend(tox, friend_number, (char *)message_text);
+        free(message_text);
+    }
+
+#endif
+}
+
+
+int main(int argc, char *argv[])
+{
+    logfile = fopen(log_filename, "wb");
+    setvbuf(logfile, NULL, _IONBF, 0);
+
     Tox *tox = create_tox();
 
     tox_public_key_hex_size = tox_public_key_size()*2 + 1;
@@ -252,16 +475,81 @@ int main()
     tox_callback_friend_request(tox, friend_request_cb);
     tox_callback_friend_message(tox, friend_message_cb);
 
+#ifdef TOX_HAVE_TOXUTIL
+    tox_utils_callback_self_connection_status(tox, self_connection_status_cb);
+    tox_callback_self_connection_status(tox, tox_utils_self_connection_status_cb);
+    tox_utils_callback_friend_connection_status(tox, friendlist_onConnectionChange);
+    tox_callback_friend_connection_status(tox, tox_utils_friend_connection_status_cb);
+    tox_utils_callback_friend_message_v2(tox, friend_message_v2_cb);
+#else
     tox_callback_self_connection_status(tox, self_connection_status_cb);
+    tox_callback_friend_connection_status(tox, friendlist_onConnectionChange);
+#endif
 
     update_savedata_file(tox);
 
-    while (1) {
+
+    long long unsigned int cur_time = time(NULL);
+    long long loop_counter = 0;
+    int max_tries = 2;
+    int try = 0;
+    uint8_t off = 1;
+
+    while (1)
+    {
+        tox_iterate(tox, NULL);
+        usleep_usec(tox_iteration_interval(tox) * 1000);
+
+        if (tox_self_get_connection_status(tox) && off)
+        {
+            dbg(2, "Tox online, took %llu seconds\n", time(NULL) - cur_time);
+            off = 0;
+            break;
+        }
+
+        c_sleep(20);
+        loop_counter++;
+
+        if (loop_counter > (50 * 20))
+        {
+            try++;
+
+            loop_counter = 0;
+            // if not yet online, bootstrap every 20 seconds
+            dbg(2, "Tox NOT online yet, bootstrapping again\n");
+            bootstrap(tox);
+
+            if (try >= max_tries)
+            {
+                // break the loop and start anyway
+                // we will bootstrap again later if we are not online every few seconds
+                break;
+            }
+        }
+    }
+
+
+    tox_loop_running = 1;
+    signal(SIGINT, sigint_handler);
+    pthread_setname_np(pthread_self(), "t_main");
+
+
+    while (tox_loop_running) {
         tox_iterate(tox, NULL);
         usleep(tox_iteration_interval(tox) * 1000);
     }
 
+#ifdef TOX_HAVE_TOXUTIL
+    tox_utils_kill(tox);
+#else
     tox_kill(tox);
+#endif
 
-    return 0;
+    if (logfile)
+    {
+        fclose(logfile);
+        logfile = NULL;
+    }
+    // HINT: for gprof you need an "exit()" call
+    exit(0);
 }
