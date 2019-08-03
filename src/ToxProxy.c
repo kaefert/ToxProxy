@@ -86,96 +86,63 @@ FILE *logfile = NULL;
 const char *log_filename = "ToxProxy.log";
 const char *savedata_filename = "ToxProxy_SaveData.tox";
 const char *savedata_tmp_filename = "ToxProxy_SaveData.tox.tmp";
+const char *empty_log_message = "empty log message received!";
 
 uint32_t tox_public_key_hex_size = 32;
 uint32_t tox_address_hex_size = 64;
 int tox_loop_running = 1;
 
 
-
-
-
-
-void dbg(int level, const char *fmt, ...)
+void toxProxyLog(int level, const char *msg, ...)
 {
-    char *level_and_format = NULL;
-    char *fmt_copy = NULL;
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	struct tm tm = *localtime(&tv.tv_sec);
 
-    if (fmt == NULL)
+	if (msg == NULL || strlen(msg) < 1) // log message is NULL || length is 0 / negative
     {
-        return;
+    	msg = empty_log_message;
     }
 
-    if (strlen(fmt) < 1)
-    {
-        return;
-    }
+	// 2019-08-03 17:01:04.440494 --> 4+1+2+1+2+1+2+1+2+1+2+1+6 = 26 ; [I] --> 5 ; + msg + \n
+    char buffer[26+5+strlen(msg)+1]; // = "0000-00-00 00:00:00.000000 [_] msg\n" -- removed extra trailing \0\0.
+    sprintf(buffer, "%04d-%02d-%02d %02d:%02d:%02d.%06ld", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
+    strcat(buffer, " [_] ");
 
-    if (!logfile)
+    switch (level)
     {
-        return;
+    	case 0:
+    		buffer[28] = 'E';
+    		break;
+    	case 1:
+    		buffer[28] = 'W';
+    		break;
+    	case 2:
+    		buffer[28] = 'I';
+    		break;
+    	default:
+    		if (level > 2)
+        		buffer[28] = 'D';
+    		else
+        		buffer[28] = '?';
+    		break;
     }
-
-    if ((level < 0) || (level > 9))
-    {
-        level = 0;
-    }
-
-    level_and_format = calloc(1, strlen(fmt) + 3 + 1);
-
-    if (!level_and_format)
-    {
-        return;
-    }
-
-    fmt_copy = level_and_format + 2;
-    strcpy(fmt_copy, fmt);
-    level_and_format[1] = ':';
-
-    if (level == 0)
-    {
-        level_and_format[0] = 'E';
-    }
-    else if (level == 1)
-    {
-        level_and_format[0] = 'W';
-    }
-    else if (level == 2)
-    {
-        level_and_format[0] = 'I';
-    }
-    else
-    {
-        level_and_format[0] = 'D';
-    }
-
-    level_and_format[(strlen(fmt) + 2)] = '\0'; // '\0' or '\n'
-    level_and_format[(strlen(fmt) + 3)] = '\0';
-    time_t t3 = time(NULL);
-    struct tm tm3 = *localtime(&t3);
-    char *level_and_format_2 = calloc(1, strlen(level_and_format) + 5 + 3 + 3 + 1 + 3 + 3 + 3 + 1);
-    level_and_format_2[0] = '\0';
-    snprintf(level_and_format_2, (strlen(level_and_format) + 5 + 3 + 3 + 1 + 3 + 3 + 3 + 1),
-             "%04d-%02d-%02d %02d:%02d:%02d:%s",
-             tm3.tm_year + 1900, tm3.tm_mon + 1, tm3.tm_mday,
-             tm3.tm_hour, tm3.tm_min, tm3.tm_sec, level_and_format);
+    strcat(buffer, msg);
+    strcat(buffer, "\n");
 
     if (level <= CURRENT_LOG_LEVEL)
     {
         va_list ap;
-        va_start(ap, fmt);
-        vfprintf(logfile, level_and_format_2, ap);
+        va_start(ap, msg);
+        vprintf(buffer, ap);
         va_end(ap);
-    }
 
-    if (level_and_format)
-    {
-        free(level_and_format);
-    }
-
-    if (level_and_format_2)
-    {
-        free(level_and_format_2);
+        if (logfile)
+        {
+            va_start(ap, msg);
+        	vfprintf(logfile, buffer, ap);
+            va_end(ap);
+        }
     }
 }
 
@@ -195,7 +162,7 @@ void usleep_usec(uint64_t usec)
 void tox_log_cb__custom(Tox *tox, TOX_LOG_LEVEL level, const char *file, uint32_t line, const char *func,
                         const char *message, void *user_data)
 {
-    dbg(9, "%d:%s:%d:%s:%s\n", (int)level, file, (int)line, func, message);
+    toxProxyLog(9, "%d:%s:%d:%s:%s", (int)level, file, (int)line, func, message);
 }
 
 Tox *create_tox()
@@ -311,9 +278,9 @@ void print_startup_message(Tox *tox)
     bin2upHex(tox_id_bin, tox_address_size(), tox_id_hex, tox_address_hex_size);
 
     size_t friends = tox_self_get_friend_list_size(tox);
-    dbg(9, "ToxProxy startup completed\n");
-    dbg(9, "My Tox ID = %s\n", tox_id_hex);
-    dbg(9, "Number of friends = %ld\n", (long)friends);
+    toxProxyLog(9, "ToxProxy startup completed");
+    toxProxyLog(9, "My Tox ID = %s", tox_id_hex);
+    toxProxyLog(9, "Number of friends = %ld", (long)friends);
 }
 
 void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length)
@@ -321,7 +288,7 @@ void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length)
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	struct tm tm = *localtime(&tv.tv_sec);
-    dbg(2,"New message from %s: %s\n", sender_key_hex, message);
+    toxProxyLog(2,"New message from %s: %s", sender_key_hex, message);
 
     const char *msgsDir = "./messages";
     char userDir[tox_public_key_hex_size+strlen(msgsDir)+1];
@@ -353,7 +320,7 @@ void friend_request_cb(Tox *tox, const uint8_t *public_key, const uint8_t *messa
 	bin2upHex(public_key, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
 
     size_t friends = tox_self_get_friend_list_size(tox);
-    dbg(2, "Got currently %zu friends. New friend request from %s with message: %s\n", friends, public_key_hex, message);
+    toxProxyLog(2, "Got currently %zu friends. New friend request from %s with message: %s", friends, public_key_hex, message);
 
     writeMessage(public_key_hex, message, length);
 
@@ -361,7 +328,7 @@ void friend_request_cb(Tox *tox, const uint8_t *public_key, const uint8_t *messa
     update_savedata_file(tox);
 
     friends = tox_self_get_friend_list_size(tox);
-    dbg(2, "Added friend: %s. Number of total friends: %zu\n", public_key_hex, friends);
+    toxProxyLog(2, "Added friend: %s. Number of total friends: %zu", public_key_hex, friends);
 }
 
 void bin2upHex(const uint8_t *bin, uint32_t bin_size, char *hex, uint32_t hex_size)
@@ -390,20 +357,20 @@ void friend_message_cb(Tox *tox, uint32_t friend_number, TOX_MESSAGE_TYPE type, 
 
 void friendlist_onConnectionChange(Tox *m, uint32_t num, TOX_CONNECTION connection_status, void *user_data)
 {
-    dbg(2, "friendlist_onConnectionChange:*READY*:friendnum=%d %d\n", (int)num, (int)connection_status);
+    toxProxyLog(2, "friendlist_onConnectionChange:*READY*:friendnum=%d %d", (int)num, (int)connection_status);
 }
 
 void self_connection_status_cb(Tox *tox, TOX_CONNECTION connection_status, void *user_data)
 {
     switch (connection_status) {
         case TOX_CONNECTION_NONE:
-        	dbg(2, "Connection Status changed to: Offline\n");
+        	toxProxyLog(2, "Connection Status changed to: Offline");
             break;
         case TOX_CONNECTION_TCP:
-        	dbg(2, "Connection Status changed to: Online via TCP\n");
+        	toxProxyLog(2, "Connection Status changed to: Online via TCP");
             break;
         case TOX_CONNECTION_UDP:
-        	dbg(2, "Connection Status changed to: Online via UDP\n");
+        	toxProxyLog(2, "Connection Status changed to: Online via UDP");
             break;
     }
 }
@@ -413,13 +380,13 @@ void self_connection_status_cb(Tox *tox, TOX_CONNECTION connection_status, void 
 //
 void send_text_message_to_friend(Tox *tox, uint32_t friend_number, const char *fmt, ...)
 {
-    dbg(9, "sending message to friend %d\n", friend_number);
+    toxProxyLog(9, "sending message to friend %d", friend_number);
     char msg2[1000];
     size_t length = 0;
 
     if (fmt == NULL)
     {
-        dbg(9, "send_text_message_to_friend:no message to send\n");
+        toxProxyLog(9, "send_text_message_to_friend:no message to send");
         return;
     }
 
@@ -445,7 +412,7 @@ void friend_message_v2_cb(Tox *tox, uint32_t friend_number,
                        const uint8_t *raw_message, size_t raw_message_len)
 {
     
-    dbg(9, "enter friend_message_v2_cb\n");
+    toxProxyLog(9, "enter friend_message_v2_cb");
     
 #ifdef TOX_HAVE_TOXUTIL
     // now get the real data from msgV2 buffer
@@ -460,7 +427,7 @@ void friend_message_v2_cb(Tox *tox, uint32_t friend_number,
                    (uint32_t)raw_message_len,
                    (bool)false, (uint32_t)0,
                    message_text, &text_length);
-        dbg(9, "friend_message_v2_cb:fn=%d res=%d msg=%s\n", (int)friend_number, (int)res,
+        toxProxyLog(9, "friend_message_v2_cb:fn=%d res=%d msg=%s", (int)friend_number, (int)res,
             (char *)message_text);
 
         // for now echo the message back to the friend
@@ -476,6 +443,8 @@ int main(int argc, char *argv[])
 {
     logfile = fopen(log_filename, "wb");
     setvbuf(logfile, NULL, _IONBF, 0);
+
+    toxProxyLog(2, NULL);
 
     Tox *tox = create_tox();
 
@@ -496,7 +465,7 @@ int main(int argc, char *argv[])
     tox_callback_friend_message(tox, friend_message_cb);
 
 #ifdef TOX_HAVE_TOXUTIL
-    dbg(9, "using toxutil\n");
+    toxProxyLog(9, "using toxutil");
     tox_utils_callback_self_connection_status(tox, self_connection_status_cb);
     tox_callback_self_connection_status(tox, tox_utils_self_connection_status_cb);
     tox_utils_callback_friend_connection_status(tox, friendlist_onConnectionChange);
@@ -512,7 +481,7 @@ int main(int argc, char *argv[])
     tox_callback_file_recv_chunk(tox, tox_utils_file_recv_chunk_cb);
     tox_utils_callback_friend_message_v2(tox, friend_message_v2_cb);
 #else
-    dbg(9, "NOT using toxutil\n");
+    toxProxyLog(9, "NOT using toxutil");
     tox_callback_self_connection_status(tox, self_connection_status_cb);
     tox_callback_friend_connection_status(tox, friendlist_onConnectionChange);
 #endif
@@ -533,7 +502,7 @@ int main(int argc, char *argv[])
 
         if (tox_self_get_connection_status(tox) && off)
         {
-            dbg(2, "Tox online, took %llu seconds\n", time(NULL) - cur_time);
+            toxProxyLog(2, "Tox online, took %llu seconds", time(NULL) - cur_time);
             off = 0;
             break;
         }
@@ -547,7 +516,7 @@ int main(int argc, char *argv[])
 
             loop_counter = 0;
             // if not yet online, bootstrap every 20 seconds
-            dbg(2, "Tox NOT online yet, bootstrapping again\n");
+            toxProxyLog(2, "Tox NOT online yet, bootstrapping again");
             bootstrap(tox);
 
             if (try >= max_tries)
