@@ -81,9 +81,9 @@ typedef struct DHT_node {
 
 
 FILE *logfile = NULL;
-const char *log_filename = "toxproxy.log";
-const char *savedata_filename = "savedata.tox";
-const char *savedata_tmp_filename = "savedata.tox.tmp";
+const char *log_filename = "ToxProxy.log";
+const char *savedata_filename = "ToxProxy_SaveData.tox";
+const char *savedata_tmp_filename = "ToxProxy_SaveData.tox.tmp";
 
 uint32_t tox_public_key_hex_size;
 uint32_t tox_address_hex_size;
