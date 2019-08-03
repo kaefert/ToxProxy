@@ -306,16 +306,17 @@ void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length)
     strcat(userDir, "/");
     strcat(userDir, sender_key_hex);
 
-    mkdir(msgsDir, NULL);
-    mkdir(userDir, NULL);
+    mkdir(msgsDir, 0700);
+    mkdir(userDir, 0700);
 
     char timestamp[4+1+2+1+2+1+4+1+2+1+6] = "0000-00-00_0000-00,000000";
-    int len = snprintf(timestamp, sizeof(timestamp), "%d-%02d-%02d_%02d%02d-%02d,%ld", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
+    snprintf(timestamp, sizeof(timestamp), "%d-%02d-%02d_%02d%02d-%02d,%ld", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
 
-    char msgPath[sizeof(userDir)+sizeof(timestamp)+1];
+    char msgPath[sizeof(userDir)+1+sizeof(timestamp)+4];
     strcpy(msgPath, userDir);
     strcat(msgPath, "/");
     strcat(msgPath, timestamp);
+    strcat(msgPath, ".txt");
 
     FILE *f = fopen(msgPath, "wb");
     fwrite(message, length, 1, f);
@@ -361,11 +362,11 @@ void friend_message_cb(Tox *tox, uint32_t friend_number, TOX_MESSAGE_TYPE type, 
                             "YOU are using the old Message format! this is not supported!",
                             length, NULL);
 
-    // uint8_t public_key_bin[tox_public_key_size()];
-    // tox_friend_get_public_key(tox, friend_number, public_key_bin, NULL);
-    // char public_key_hex[tox_public_key_hex_size];
-    // bin2upHex(&public_key_bin, tox_public_key_size(), &public_key_hex, tox_public_key_hex_size);
-    // writeMessage(&public_key_hex, message, length);
+    uint8_t public_key_bin[tox_public_key_size()];
+    tox_friend_get_public_key(tox, friend_number, public_key_bin, NULL);
+    char public_key_hex[tox_public_key_hex_size];
+    bin2upHex(&public_key_bin, tox_public_key_size(), &public_key_hex, tox_public_key_hex_size);
+    writeMessage(&public_key_hex, message, length);
 }
 
 void friendlist_onConnectionChange(Tox *m, uint32_t num, TOX_CONNECTION connection_status, void *user_data)
