@@ -40,6 +40,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 #include <assert.h>
 #include <errno.h>
 #include <limits.h>
+#include <stdbool.h>
 
 #include <pthread.h>
 
@@ -49,6 +50,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 // gives bin2hex & hex2bin functions for Tox-ID / public-key conversions
 #include <sodium/utils.h>
+
 
 // tox core
 #include <tox/tox.h>
@@ -79,15 +81,22 @@ typedef struct DHT_node {
 #define CURRENT_LOG_LEVEL 9 // 0 -> error, 1 -> warn, 2 -> info, 9 -> debug
 #define c_sleep(x) usleep_usec(1000*x)
 
+typedef enum ControlProxyMessageType {
+	ControlProxyMessageType_pubKey = 0,
+	ControlProxyMessageType_killSwitch = 1,
+	ControlProxyMessageType_allMessagesSent = 2
+} ControlProxyMessageType;
 
 FILE *logfile = NULL;
 const char *log_filename = "ToxProxy.log";
 const char *savedata_filename = "ToxProxy_SaveData.tox";
 const char *savedata_tmp_filename = "ToxProxy_SaveData.tox.tmp";
 const char *empty_log_message = "empty log message received!";
+const char *msgsDir = "./messages";
+const char *masterFile = "ToxProxyMasterPubKey.txt";
 
-uint32_t tox_public_key_hex_size = 32;
-uint32_t tox_address_hex_size = 64;
+uint32_t tox_public_key_hex_size = 0; //initialized in main
+uint32_t tox_address_hex_size = 0; //initialized in main
 int tox_loop_running = 1;
 
 
@@ -296,7 +305,6 @@ void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length)
 	struct tm tm = *localtime(&tv.tv_sec);
     toxProxyLog(2,"New message from %s: %s", sender_key_hex, message);
 
-    const char *msgsDir = "./messages";
     char userDir[tox_public_key_hex_size+strlen(msgsDir)+1];
     strcpy(userDir, msgsDir);
     strcat(userDir, "/");
@@ -319,6 +327,49 @@ void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length)
     fclose(f);
 }
 
+void add_master(const char* public_key_hex)
+{
+	toxProxyLog(2, "added master");
+    FILE *f = fopen(masterFile, "wb");
+    fwrite(public_key_hex, tox_public_key_hex_size, 1, f);
+    fclose(f);
+}
+
+bool is_master(const char* public_key_hex)
+{
+    FILE *f = fopen(masterFile, "rb");
+
+	fseek(f, 0, SEEK_END);
+	long fsize = ftell(f);
+	fseek(f, 0, SEEK_SET);
+
+	char *masterPubKeyHexSaved = malloc(fsize);
+
+	fread(masterPubKeyHexSaved, fsize, 1, f);
+	fclose(f);
+
+	if(strncmp(masterPubKeyHexSaved,public_key_hex, tox_public_key_hex_size) == 0) {
+		return true;
+	}
+	else {
+		return false;
+	}
+}
+
+bool is_master_friendnumber(Tox *tox, uint32_t friend_number)
+{
+	char pubKeyHex[tox_public_key_hex_size];
+	getPubKeyHex_friendnumber(tox, friend_number, pubKeyHex);
+	return is_master(pubKeyHex);
+}
+
+void getPubKeyHex_friendnumber(Tox *tox, uint32_t friend_number, char* pubKeyHex)
+{
+    uint8_t public_key_bin[tox_public_key_size()];
+    tox_friend_get_public_key(tox, friend_number, public_key_bin, NULL);
+    bin2upHex(public_key_bin, tox_public_key_size(), pubKeyHex, tox_public_key_hex_size);
+}
+
 void friend_request_cb(Tox *tox, const uint8_t *public_key, const uint8_t *message, size_t length,
                                    void *user_data)
 {
@@ -326,6 +377,12 @@ void friend_request_cb(Tox *tox, const uint8_t *public_key, const uint8_t *messa
 	bin2upHex(public_key, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
 
     size_t friends = tox_self_get_friend_list_size(tox);
+
+    if(friends == 0) {
+    	// add first friend as master for this proxy
+    	add_master(public_key_hex);
+    }
+
     toxProxyLog(2, "Got currently %zu friends. New friend request from %s with message: %s", friends, public_key_hex, message);
 
     writeMessage(public_key_hex, message, length);
@@ -436,6 +493,41 @@ void friend_message_v2_cb(Tox *tox, uint32_t friend_number,
 #endif
 }
 
+void friend_lossless_packet_cb(Tox *tox, uint32_t friend_number, const uint8_t *data, size_t length,
+        void *user_data)
+{
+	toxProxyLog(0, "receiving custom message not yet implemented");
+
+	if(length <= 0) {
+		toxProxyLog(0, "received empty lossless package!");
+		return;
+	}
+
+	if(!is_master_friendnumber(tox, friend_number)) {
+		toxProxyLog(0, "received lossless package from somebody who's not master!");
+		return;
+	}
+
+	if(data[0] == ControlProxyMessageType_killSwitch) {
+		toxProxyLog(2, "got killSwitch command, deleting all data");
+		unlink(savedata_filename);
+		unlink(masterFile);
+		toxProxyLog(1, "todo implement deleting messages");
+		exit(0);
+	}
+	else if (data[0] == ControlProxyMessageType_pubKey) {
+		if(length != tox_public_key_size() + 1) {
+			toxProxyLog(0, "received ControlProxyMessageType_pubKey message with wrong size");
+			return;
+		}
+		const uint8_t* public_key = data+1;
+	    tox_friend_add_norequest(tox, public_key, NULL);
+	    update_savedata_file(tox);
+	}
+	else {
+		toxProxyLog(0, "received unexpected ControlProxyMessageType");
+	}
+}
 
 int main(int argc, char *argv[])
 {
@@ -483,6 +575,8 @@ int main(int argc, char *argv[])
     tox_callback_self_connection_status(tox, self_connection_status_cb);
     tox_callback_friend_connection_status(tox, friendlist_onConnectionChange);
 #endif
+
+    tox_callback_friend_lossless_packet(tox, friend_lossless_packet_cb);
 
     update_savedata_file(tox);
 
