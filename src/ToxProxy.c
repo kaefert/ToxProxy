@@ -52,6 +52,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 // tox core
 #include <tox/tox.h>
+
+#undef TOX_HAVE_TOXUTIL
+#define TOX_HAVE_TOXUTIL 1
+
 #ifdef TOX_HAVE_TOXUTIL
     #include <tox/toxutil.h>
 #endif
