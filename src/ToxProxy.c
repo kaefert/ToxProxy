@@ -419,8 +419,13 @@ void friend_message_cb(Tox *tox, uint32_t friend_number, TOX_MESSAGE_TYPE type, 
 void friendlist_onConnectionChange(Tox *tox, uint32_t friend_number, TOX_CONNECTION connection_status, void *user_data)
 {
     toxProxyLog(2, "friendlist_onConnectionChange:*READY*:friendnum=%d %d", (int)friend_number, (int)connection_status);
-    if(is_master_friendnumber(tox, friend_number) && connection_status != TOX_CONNECTION_NONE) {
-    		toxProxyLog(2, "master is online, send him all cached unsent messages");
+    if(is_master_friendnumber(tox, friend_number)) {
+    		if(connection_status != TOX_CONNECTION_NONE) {
+    			toxProxyLog(2, "master is online, send him all cached unsent messages");
+    		}
+    		else {
+    			toxProxyLog(2, "master went offline, don't send him any more messages.");
+    		}
     }
 }
 
