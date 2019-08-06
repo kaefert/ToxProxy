@@ -161,13 +161,19 @@ void toxProxyLog(int level, const char *msg, ...)
     }
 }
 
-time_t get_unix_time(void)
-{
+void killSwitch() {
+	toxProxyLog(2, "got killSwitch command, deleting all data");
+	unlink(savedata_filename);
+	unlink(masterFile);
+	toxProxyLog(1, "todo implement deleting messages");
+	exit(0);
+}
+
+time_t get_unix_time(void) {
     return time(NULL);
 }
 
-void usleep_usec(uint64_t usec)
-{
+void usleep_usec(uint64_t usec) {
     struct timespec ts;
     ts.tv_sec = usec / 1000000;
     ts.tv_nsec = (usec % 1000000) * 1000;
@@ -462,6 +468,19 @@ void send_text_message_to_friend(Tox *tox, uint32_t friend_number, const char *f
 #endif
 }
 
+int hex_string_to_bin(const char *hex_string, size_t hex_len, char *output, size_t output_size)
+{
+    if (output_size == 0 || hex_len != output_size * 2) {
+        return -1;
+    }
+
+    for (size_t i = 0; i < output_size; ++i) {
+        sscanf(hex_string, "%2hhx", (unsigned char *)&output[i]);
+        hex_string += 2;
+    }
+
+    return 0;
+}
 
 void friend_message_v2_cb(Tox *tox, uint32_t friend_number,
                        const uint8_t *raw_message, size_t raw_message_len)
@@ -484,6 +503,26 @@ void friend_message_v2_cb(Tox *tox, uint32_t friend_number,
                    message_text, &text_length);
         toxProxyLog(9, "friend_message_v2_cb:fn=%d res=%d msg=%s", (int)friend_number, (int)res,
             (char *)message_text);
+
+        if(is_master_friendnumber(tox, friend_number)) {
+        		if(len(message_text) == len("fp:") + tox_public_key_size()*2)
+        		{
+        			if(strncmp(message_text, "fp:", len("fp:")))
+				{
+					char* pubKey = message_text+3;
+					uint8_t public_key_bin[tox_public_key_size()];
+					hex_string_to_bin(pubKey, tox_public_key_size()*2, public_key_bin, tox_public_key_size());
+					tox_friend_add_norequest(tox, public_key_bin, NULL);
+					update_savedata_file(tox);
+				}
+        		}
+        		else if(len(message_text) == len("DELETE_EVERYTHING")) {
+        			if(strncmp(message_text, "DELETE_EVERYTHING", len("DELETE_EVERYTHING")))
+				{
+        				killSwitch();
+				}
+        		}
+        }
 
         // for now echo the message back to the friend
         send_text_message_to_friend(tox, friend_number, (char *)message_text);
@@ -509,11 +548,7 @@ void friend_lossless_packet_cb(Tox *tox, uint32_t friend_number, const uint8_t *
 	}
 
 	if(data[0] == ControlProxyMessageType_killSwitch) {
-		toxProxyLog(2, "got killSwitch command, deleting all data");
-		unlink(savedata_filename);
-		unlink(masterFile);
-		toxProxyLog(1, "todo implement deleting messages");
-		exit(0);
+		killSwitch();
 	}
 	else if (data[0] == ControlProxyMessageType_pubKey) {
 		if(length != tox_public_key_size() + 1) {
