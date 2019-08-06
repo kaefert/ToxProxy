@@ -505,7 +505,7 @@ void friend_message_v2_cb(Tox *tox, uint32_t friend_number,
             (char *)message_text);
 
         if(is_master_friendnumber(tox, friend_number)) {
-        		if(len(message_text) == strlen("fp:") + tox_public_key_size()*2)
+        		if(strlen(message_text) == strlen("fp:") + tox_public_key_size()*2)
         		{
         			if(strncmp(message_text, "fp:", strlen("fp:")))
 				{
@@ -525,7 +525,11 @@ void friend_message_v2_cb(Tox *tox, uint32_t friend_number,
         }
         else {
         		// nicht vom master, also wohl ein freund vom master.
-        		//TODO IMPLEMENT writeMessage(sender_key_hex, message, length)
+        		uint8_t public_key_bin[tox_public_key_size()];
+        	    tox_friend_get_public_key(tox, friend_number, public_key_bin, NULL);
+        	    char public_key_hex[tox_public_key_hex_size];
+        	    bin2upHex(public_key_bin, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
+        	    writeMessage(public_key_hex, raw_message, raw_message_len);
         }
 
         // for now echo the message back to the friend
