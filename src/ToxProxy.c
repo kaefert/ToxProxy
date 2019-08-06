@@ -505,9 +505,9 @@ void friend_message_v2_cb(Tox *tox, uint32_t friend_number,
             (char *)message_text);
 
         if(is_master_friendnumber(tox, friend_number)) {
-        		if(len(message_text) == len("fp:") + tox_public_key_size()*2)
+        		if(len(message_text) == strlen("fp:") + tox_public_key_size()*2)
         		{
-        			if(strncmp(message_text, "fp:", len("fp:")))
+        			if(strncmp(message_text, "fp:", strlen("fp:")))
 				{
 					char* pubKey = message_text+3;
 					uint8_t public_key_bin[tox_public_key_size()];
@@ -516,12 +516,16 @@ void friend_message_v2_cb(Tox *tox, uint32_t friend_number,
 					update_savedata_file(tox);
 				}
         		}
-        		else if(len(message_text) == len("DELETE_EVERYTHING")) {
-        			if(strncmp(message_text, "DELETE_EVERYTHING", len("DELETE_EVERYTHING")))
+        		else if(strlen(message_text) == strlen("DELETE_EVERYTHING")) {
+        			if(strncmp(message_text, "DELETE_EVERYTHING", strlen("DELETE_EVERYTHING")))
 				{
         				killSwitch();
 				}
         		}
+        }
+        else {
+        		// nicht vom master, also wohl ein freund vom master.
+        		//TODO IMPLEMENT writeMessage(sender_key_hex, message, length)
         }
 
         // for now echo the message back to the friend
