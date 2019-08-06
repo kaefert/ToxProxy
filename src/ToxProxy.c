@@ -362,18 +362,18 @@ bool is_master(const char* public_key_hex)
 	}
 }
 
-bool is_master_friendnumber(Tox *tox, uint32_t friend_number)
-{
-	char pubKeyHex[tox_public_key_hex_size];
-	getPubKeyHex_friendnumber(tox, friend_number, pubKeyHex);
-	return is_master(pubKeyHex);
-}
-
 void getPubKeyHex_friendnumber(Tox *tox, uint32_t friend_number, char* pubKeyHex)
 {
     uint8_t public_key_bin[tox_public_key_size()];
     tox_friend_get_public_key(tox, friend_number, public_key_bin, NULL);
     bin2upHex(public_key_bin, tox_public_key_size(), pubKeyHex, tox_public_key_hex_size);
+}
+
+bool is_master_friendnumber(Tox *tox, uint32_t friend_number)
+{
+	char pubKeyHex[tox_public_key_hex_size];
+	getPubKeyHex_friendnumber(tox, friend_number, pubKeyHex);
+	return is_master(pubKeyHex);
 }
 
 void friend_request_cb(Tox *tox, const uint8_t *public_key, const uint8_t *message, size_t length,
@@ -416,9 +416,12 @@ void friend_message_cb(Tox *tox, uint32_t friend_number, TOX_MESSAGE_TYPE type, 
     writeMessage(public_key_hex, message, length);
 }
 
-void friendlist_onConnectionChange(Tox *m, uint32_t num, TOX_CONNECTION connection_status, void *user_data)
+void friendlist_onConnectionChange(Tox *tox, uint32_t friend_number, TOX_CONNECTION connection_status, void *user_data)
 {
-    toxProxyLog(2, "friendlist_onConnectionChange:*READY*:friendnum=%d %d", (int)num, (int)connection_status);
+    toxProxyLog(2, "friendlist_onConnectionChange:*READY*:friendnum=%d %d", (int)friend_number, (int)connection_status);
+    if(is_master_friendnumber(tox, friend_number) && connection_status != TOX_CONNECTION_NONE) {
+    		toxProxyLog(2, "master is online, send him all cached unsent messages");
+    }
 }
 
 void self_connection_status_cb(Tox *tox, TOX_CONNECTION connection_status, void *user_data)
