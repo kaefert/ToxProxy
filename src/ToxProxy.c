@@ -88,7 +88,6 @@ typedef enum ControlProxyMessageType {
 } ControlProxyMessageType;
 
 FILE *logfile = NULL;
-const char *log_filename = "ToxProxy.log";
 const char *savedata_filename = "ToxProxy_SaveData.tox";
 const char *savedata_tmp_filename = "ToxProxy_SaveData.tox.tmp";
 const char *empty_log_message = "empty log message received!";
@@ -321,8 +320,8 @@ void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length)
 
     //TODO FIXME use message v2 message id / hash instead of timestamp of receiving / processing message!
 
-    char timestamp[4+1+2+1+2+1+4+1+2+1+6] = "0000-00-00_0000-00,000000";
-    snprintf(timestamp, sizeof(timestamp), "%d-%02d-%02d_%02d%02d-%02d,%ld", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
+    char timestamp[strlen("0000-00-00_0000-00,000000")+1]; // = "0000-00-00_0000-00,000000";
+    snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02d_%02d%02d-%02d,%06ld", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
 
     char msgPath[sizeof(userDir)+1+sizeof(timestamp)+4];
     strcpy(msgPath, userDir);
@@ -517,7 +516,7 @@ void friend_message_v2_cb(Tox *tox, uint32_t friend_number,
             (char *)message_text);
 
         if(is_master_friendnumber(tox, friend_number)) {
-        		if(strlen(message_text) == strlen("fp:") + tox_public_key_size()*2)
+        		if(strlen(message_text) == strlen("fp:") + tox_public_key_hex_size)
         		{
         			if(strncmp(message_text, "fp:", strlen("fp:")))
 				{
@@ -586,28 +585,32 @@ void friend_lossless_packet_cb(Tox *tox, uint32_t friend_number, const uint8_t *
 
 int main(int argc, char *argv[])
 {
-    logfile = fopen(log_filename, "wb");
-    setvbuf(logfile, NULL, _IONBF, 0);
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	struct tm tm = *localtime(&tv.tv_sec);
+	char log_filename[strlen("ToxProxy_0000-00-00_0000-00,000000.log")+1];
+	snprintf(log_filename, sizeof(log_filename), "ToxProxy_%04d-%02d-%02d_%02d%02d-%02d,%06ld.log", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
 
-    toxProxyLog(2, NULL);
+	logfile = fopen(log_filename, "wb");
+	setvbuf(logfile, NULL, _IONBF, 0);
 
-    Tox *tox = create_tox();
+	Tox *tox = create_tox();
 
-    tox_public_key_hex_size = tox_public_key_size()*2 + 1;
-    tox_address_hex_size = tox_address_size()*2 + 1;
+	tox_public_key_hex_size = tox_public_key_size()*2 + 1;
+	tox_address_hex_size = tox_address_size()*2 + 1;
 
-    const char *name = "ToxProxy";
-    tox_self_set_name(tox, (uint8_t *)name, strlen(name), NULL);
+	const char *name = "ToxProxy";
+	tox_self_set_name(tox, (uint8_t *)name, strlen(name), NULL);
 
-    const char *status_message = "Proxy for your messages";
-    tox_self_set_status_message(tox, (uint8_t *)status_message, strlen(status_message), NULL);
+	const char *status_message = "Proxy for your messages";
+	tox_self_set_status_message(tox, (uint8_t *)status_message, strlen(status_message), NULL);
 
-    bootstrap(tox);
+	bootstrap(tox);
 
-    print_startup_message(tox);
+	print_startup_message(tox);
 
-    tox_callback_friend_request(tox, friend_request_cb);
-    tox_callback_friend_message(tox, friend_message_cb);
+	tox_callback_friend_request(tox, friend_request_cb);
+	tox_callback_friend_message(tox, friend_message_cb);
 
 #ifdef TOX_HAVE_TOXUTIL
     toxProxyLog(9, "using toxutil");
