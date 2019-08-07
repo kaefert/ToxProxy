@@ -490,6 +490,18 @@ int hex_string_to_bin(const char *hex_string, size_t hex_len, char *output, size
     return 0;
 }
 
+void friend_sync_message_v2_cb(Tox *tox, uint32_t friend_number,
+                               const uint8_t *message, size_t length)
+{
+    toxProxyLog(9, "enter friend_sync_message_v2_cb");
+}
+
+void friend_read_receipt_message_v2_cb(Tox *tox, uint32_t friend_number,
+                                             uint32_t ts_sec, const uint8_t *msgid)
+{
+    toxProxyLog(9, "enter friend_read_receipt_message_v2_cb");
+}
+
 void friend_message_v2_cb(Tox *tox, uint32_t friend_number,
                        const uint8_t *raw_message, size_t raw_message_len)
 {
@@ -551,7 +563,6 @@ void friend_message_v2_cb(Tox *tox, uint32_t friend_number,
 void friend_lossless_packet_cb(Tox *tox, uint32_t friend_number, const uint8_t *data, size_t length,
         void *user_data)
 {
-	toxProxyLog(0, "receiving custom message not yet implemented");
 
 	if(length <= 0) {
 		toxProxyLog(0, "received empty lossless package!");
@@ -621,6 +632,8 @@ int main(int argc, char *argv[])
     // tox_utils_callback_file_recv_chunk(tox, on_file_recv_chunk);
     tox_callback_file_recv_chunk(tox, tox_utils_file_recv_chunk_cb);
     tox_utils_callback_friend_message_v2(tox, friend_message_v2_cb);
+    tox_utils_callback_friend_read_receipt_message_v2(tox, friend_read_receipt_message_v2_cb);
+    tox_utils_callback_friend_sync_message_v2(tox, friend_sync_message_v2_cb);
 #else
     toxProxyLog(9, "NOT using toxutil");
     tox_callback_self_connection_status(tox, self_connection_status_cb);
