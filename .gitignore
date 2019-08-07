@@ -1,4 +1,5 @@
 /Debug/
 /messages/
-ToxProxy_SaveData.tox
-ToxProxy.log
+ToxProxy_SaveData*.tox
+ToxProxy*.log
+ToxProxyMasterPubKey*.txt
