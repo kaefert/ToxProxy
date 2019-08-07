@@ -583,8 +583,7 @@ void friend_lossless_packet_cb(Tox *tox, uint32_t friend_number, const uint8_t *
 	}
 }
 
-int main(int argc, char *argv[])
-{
+void openLogFile() {
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	struct tm tm = *localtime(&tv.tv_sec);
@@ -593,6 +592,11 @@ int main(int argc, char *argv[])
 
 	logfile = fopen(log_filename, "wb");
 	setvbuf(logfile, NULL, _IONBF, 0);
+}
+
+int main(int argc, char *argv[])
+{
+	openLogFile();
 
 	Tox *tox = create_tox();
 
