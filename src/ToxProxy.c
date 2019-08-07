@@ -319,6 +319,8 @@ void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length)
     mkdir(msgsDir, 0700);
     mkdir(userDir, 0700);
 
+    //TODO FIXME use message v2 message id / hash instead of timestamp of receiving / processing message!
+
     char timestamp[4+1+2+1+2+1+4+1+2+1+6] = "0000-00-00_0000-00,000000";
     snprintf(timestamp, sizeof(timestamp), "%d-%02d-%02d_%02d%02d-%02d,%ld", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
 
@@ -422,9 +424,11 @@ void friendlist_onConnectionChange(Tox *tox, uint32_t friend_number, TOX_CONNECT
     if(is_master_friendnumber(tox, friend_number)) {
     		if(connection_status != TOX_CONNECTION_NONE) {
     			toxProxyLog(2, "master is online, send him all cached unsent messages");
+    			//TODO FIXME IMPLEMENT sending all messages that don't have an already sent marker
     		}
     		else {
     			toxProxyLog(2, "master went offline, don't send him any more messages.");
+    			//TODO FIXME make a global boolean toggle to use in the message sending loop to cancel sending more messages
     		}
     }
 }
