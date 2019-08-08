@@ -82,9 +82,9 @@ typedef struct DHT_node {
 #define c_sleep(x) usleep_usec(1000*x)
 
 typedef enum ControlProxyMessageType {
-	ControlProxyMessageType_pubKey = 0,
-	ControlProxyMessageType_killSwitch = 1,
-	ControlProxyMessageType_allMessagesSent = 2
+	ControlProxyMessageType_pubKey = 200,
+	ControlProxyMessageType_killSwitch = 201,
+	ControlProxyMessageType_allMessagesSent = 202
 } ControlProxyMessageType;
 
 FILE *logfile = NULL;
