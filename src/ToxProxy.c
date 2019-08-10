@@ -453,6 +453,7 @@ void friendlist_onConnectionChange(Tox *tox, uint32_t friend_number, TOX_CONNECT
 	if (is_master_friendnumber(tox, friend_number)) {
 		if (connection_status != TOX_CONNECTION_NONE) {
 			toxProxyLog(2, "master is online, send him all cached unsent messages");
+			send_text_message_to_friend(tox, friend_number, "Hello master! I just saw you coming online! If it where implemented, I'd send you all the messages I've received in your absence now.");
 			//TODO FIXME IMPLEMENT sending all messages that don't have an already sent marker
 		} else {
 			toxProxyLog(2, "master went offline, don't send him any more messages.");
