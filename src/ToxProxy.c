@@ -339,7 +339,7 @@ bool is_master(const char *public_key_hex) {
 	long fsize = ftell(f);
 	fseek(f, 0, SEEK_SET);
 
-	char *masterPubKeyHexSaved = malloc(fsize);
+	char masterPubKeyHexSaved[fsize];
 
 	fread(masterPubKeyHexSaved, fsize, 1, f);
 	fclose(f);
