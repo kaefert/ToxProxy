@@ -99,6 +99,7 @@ const char *my_toxid_filename_txt = "toxid.txt";
 uint32_t tox_public_key_hex_size = 0; //initialized in main
 uint32_t tox_address_hex_size = 0; //initialized in main
 int tox_loop_running = 1;
+bool global_master_comes_online = false;
 
 void bin2upHex(const uint8_t *bin, uint32_t bin_size, char *hex, uint32_t hex_size) {
 	sodium_bin2hex(hex, hex_size, bin, bin_size);
@@ -495,21 +496,9 @@ void friendlist_onConnectionChange(Tox *tox, uint32_t friend_number, TOX_CONNECT
 	if (is_master_friendnumber(tox, friend_number)) {
 		if (connection_status != TOX_CONNECTION_NONE) {
 			toxProxyLog(2, "master is online, send him all cached unsent messages");
-
-			char public_key_bin[tox_public_key_size()];
-			hex_string_to_bin("CAED7884059C48B67E1C67AAB4409726435426D435E7DE55E53A6139DDAC824D", tox_public_key_hex_size, public_key_bin, tox_public_key_size());
-
-			char* message_text = "this is a hard-coded fake test message";
-			uint32_t rawMsgSize;
-			rawMsgSize = tox_messagev2_size(strlen(message_text)+1, TOX_FILE_KIND_MESSAGEV2_SYNC, 0);
-			uint8_t raw_message[rawMsgSize];
-			uint8_t msgid;
-
-			tox_messagev2_sync_wrap(strlen(message_text)+1, public_key_bin, message_text,
-					123, 456, raw_message, &msgid);
-			tox_util_friend_send_sync_message_v2(tox, friend_number, raw_message, rawMsgSize, NULL);
-			send_text_message_to_friend(tox, friend_number, "Hello master! I just saw you coming online! If it where implemented, I'd send you all the messages I've received in your absence now.");
+			// send_text_message_to_friend(tox, friend_number, "Hello master! I just saw you coming online! If it where implemented, I'd send you all the messages I've received in your absence now.");
 			//TODO FIXME IMPLEMENT sending all messages that don't have an already sent marker
+            global_master_comes_online = true;
 		} else {
 			toxProxyLog(2, "master went offline, don't send him any more messages.");
 			//TODO FIXME make a global boolean toggle to use in the message sending loop to cancel sending more messages
@@ -618,6 +607,24 @@ void openLogFile() {
 	setvbuf(logfile, NULL, _IONBF, 0);
 }
 
+void send_sync_msg(Tox *tox)
+{
+    char public_key_bin[tox_public_key_size()];
+    hex_string_to_bin("CAED7884059C48B67E1C67AAB4409726435426D435E7DE55E53A6139DDAC824D", tox_public_key_hex_size, public_key_bin, tox_public_key_size());
+
+    char* message_text = "this is a hard-coded fake test message";
+    uint32_t rawMsgSize = tox_messagev2_size(strlen(message_text)+1, TOX_FILE_KIND_MESSAGEV2_SYNC, 0);
+    uint8_t *raw_message = calloc(1, rawMsgSize);
+    uint8_t msgid;
+
+    tox_messagev2_sync_wrap(strlen(message_text)+1, public_key_bin, message_text,
+            123, 456, raw_message, &msgid);
+    bool res = tox_util_friend_send_sync_message_v2(tox, 0, raw_message, rawMsgSize, NULL);
+    toxProxyLog(9, "send_sync_msg res=%d", (int)res);
+    
+    free(raw_message);
+}
+
 int main(int argc, char *argv[]) {
 	openLogFile();
 
@@ -680,6 +687,8 @@ int main(int argc, char *argv[]) {
 		tox_iterate(tox, NULL);
 		usleep_usec(tox_iteration_interval(tox) * 1000);
 
+
+
 		if (tox_self_get_connection_status(tox) && off) {
 			toxProxyLog(2, "Tox online, took %llu seconds", time(NULL) - cur_time);
 			off = 0;
@@ -712,6 +721,13 @@ int main(int argc, char *argv[]) {
 	while (tox_loop_running) {
 		tox_iterate(tox, NULL);
 		usleep(tox_iteration_interval(tox) * 1000);
+
+        if (global_master_comes_online == true)
+        {
+            toxProxyLog(2, "send_sync_msg");
+            send_sync_msg(tox);
+            global_master_comes_online = false;
+        }
 	}
 
 #ifdef TOX_HAVE_TOXUTIL
