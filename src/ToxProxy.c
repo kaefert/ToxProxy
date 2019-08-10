@@ -420,6 +420,19 @@ bool is_master_friendnumber(Tox *tox, uint32_t friend_number) {
 	return is_master(pubKeyHex);
 }
 
+int hex_string_to_bin(const char *hex_string, size_t hex_len, char *output, size_t output_size) {
+	if (output_size == 0 || hex_len != output_size * 2) {
+		return -1;
+	}
+
+	for (size_t i = 0; i < output_size; ++i) {
+		sscanf(hex_string, "%2hhx", (unsigned char*) &output[i]);
+		hex_string += 2;
+	}
+
+	return 0;
+}
+
 void friend_request_cb(Tox *tox, const uint8_t *public_key, const uint8_t *message, size_t length, void *user_data) {
 	char public_key_hex[tox_public_key_hex_size];
 	bin2upHex(public_key, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
@@ -446,34 +459,6 @@ void friend_message_cb(Tox *tox, uint32_t friend_number, TOX_MESSAGE_TYPE type, 
 	char *default_msg = "YOU are using the old Message format! this is not supported!";
 	tox_friend_send_message(tox, friend_number, type, (uint8_t*) default_msg, strlen(default_msg), NULL);
 	writeMessageHelper(tox, friend_number, message, length);
-}
-
-void friendlist_onConnectionChange(Tox *tox, uint32_t friend_number, TOX_CONNECTION connection_status, void *user_data) {
-	toxProxyLog(2, "friendlist_onConnectionChange:*READY*:friendnum=%d %d", (int) friend_number, (int) connection_status);
-	if (is_master_friendnumber(tox, friend_number)) {
-		if (connection_status != TOX_CONNECTION_NONE) {
-			toxProxyLog(2, "master is online, send him all cached unsent messages");
-			send_text_message_to_friend(tox, friend_number, "Hello master! I just saw you coming online! If it where implemented, I'd send you all the messages I've received in your absence now.");
-			//TODO FIXME IMPLEMENT sending all messages that don't have an already sent marker
-		} else {
-			toxProxyLog(2, "master went offline, don't send him any more messages.");
-			//TODO FIXME make a global boolean toggle to use in the message sending loop to cancel sending more messages
-		}
-	}
-}
-
-void self_connection_status_cb(Tox *tox, TOX_CONNECTION connection_status, void *user_data) {
-	switch (connection_status) {
-	case TOX_CONNECTION_NONE:
-		toxProxyLog(2, "Connection Status changed to: Offline");
-		break;
-	case TOX_CONNECTION_TCP:
-		toxProxyLog(2, "Connection Status changed to: Online via TCP");
-		break;
-	case TOX_CONNECTION_UDP:
-		toxProxyLog(2, "Connection Status changed to: Online via UDP");
-		break;
-	}
 }
 
 //
@@ -505,17 +490,45 @@ void send_text_message_to_friend(Tox *tox, uint32_t friend_number, const char *f
 #endif
 }
 
-int hex_string_to_bin(const char *hex_string, size_t hex_len, char *output, size_t output_size) {
-	if (output_size == 0 || hex_len != output_size * 2) {
-		return -1;
-	}
+void friendlist_onConnectionChange(Tox *tox, uint32_t friend_number, TOX_CONNECTION connection_status, void *user_data) {
+	toxProxyLog(2, "friendlist_onConnectionChange:*READY*:friendnum=%d %d", (int) friend_number, (int) connection_status);
+	if (is_master_friendnumber(tox, friend_number)) {
+		if (connection_status != TOX_CONNECTION_NONE) {
+			toxProxyLog(2, "master is online, send him all cached unsent messages");
 
-	for (size_t i = 0; i < output_size; ++i) {
-		sscanf(hex_string, "%2hhx", (unsigned char*) &output[i]);
-		hex_string += 2;
-	}
+			char public_key_bin[tox_public_key_size()];
+			hex_string_to_bin("CAED7884059C48B67E1C67AAB4409726435426D435E7DE55E53A6139DDAC824D", tox_public_key_hex_size, public_key_bin, tox_public_key_size());
 
-	return 0;
+			char* message_text = "this is a hard-coded fake test message";
+			uint32_t rawMsgSize;
+			rawMsgSize = tox_messagev2_size(strlen(message_text)+1, TOX_FILE_KIND_MESSAGEV2_SYNC, 0);
+			uint8_t raw_message[rawMsgSize];
+			uint8_t msgid;
+
+			tox_messagev2_sync_wrap(strlen(message_text)+1, public_key_bin, message_text,
+					123, 456, raw_message, &msgid);
+			tox_util_friend_send_sync_message_v2(tox, friend_number, raw_message, rawMsgSize, NULL);
+			send_text_message_to_friend(tox, friend_number, "Hello master! I just saw you coming online! If it where implemented, I'd send you all the messages I've received in your absence now.");
+			//TODO FIXME IMPLEMENT sending all messages that don't have an already sent marker
+		} else {
+			toxProxyLog(2, "master went offline, don't send him any more messages.");
+			//TODO FIXME make a global boolean toggle to use in the message sending loop to cancel sending more messages
+		}
+	}
+}
+
+void self_connection_status_cb(Tox *tox, TOX_CONNECTION connection_status, void *user_data) {
+	switch (connection_status) {
+	case TOX_CONNECTION_NONE:
+		toxProxyLog(2, "Connection Status changed to: Offline");
+		break;
+	case TOX_CONNECTION_TCP:
+		toxProxyLog(2, "Connection Status changed to: Online via TCP");
+		break;
+	case TOX_CONNECTION_UDP:
+		toxProxyLog(2, "Connection Status changed to: Online via UDP");
+		break;
+	}
 }
 
 void friend_sync_message_v2_cb(Tox *tox, uint32_t friend_number, const uint8_t *message, size_t length) {
