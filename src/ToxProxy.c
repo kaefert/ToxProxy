@@ -78,6 +78,8 @@ typedef struct DHT_node {
 
 #define CURRENT_LOG_LEVEL 9 // 0 -> error, 1 -> warn, 2 -> info, 9 -> debug
 #define c_sleep(x) usleep_usec(1000*x)
+#define CLEAR(x) memset(&(x), 0, sizeof(x))
+
 
 typedef enum ControlProxyMessageType {
 	ControlProxyMessageType_pubKey = 200,
@@ -91,6 +93,8 @@ const char *savedata_tmp_filename = "ToxProxy_SaveData.tox.tmp";
 const char *empty_log_message = "empty log message received!";
 const char *msgsDir = "./messages";
 const char *masterFile = "ToxProxyMasterPubKey.txt";
+const char *my_toxid_filename_txt = "toxid.txt";
+
 
 uint32_t tox_public_key_hex_size = 0; //initialized in main
 uint32_t tox_address_hex_size = 0; //initialized in main
@@ -325,7 +329,54 @@ void writeMessageHelper(Tox *tox, uint32_t friend_number, const uint8_t *message
 	writeMessage(public_key_hex, message, length);
 }
 
+bool file_exists(const char *path)
+{
+    struct stat s;
+    return stat(path, &s) == 0;
+}
+
+// fill string with toxid in upper case hex.
+// size of toxid_str needs to be: [TOX_ADDRESS_SIZE*2 + 1] !!
+void get_my_toxid(Tox *tox, char *toxid_str)
+{
+    uint8_t tox_id_bin[TOX_ADDRESS_SIZE];
+    tox_self_get_address(tox, tox_id_bin);
+    char tox_id_hex_local[TOX_ADDRESS_SIZE * 2 + 1];
+    sodium_bin2hex(tox_id_hex_local, sizeof(tox_id_hex_local), tox_id_bin, sizeof(tox_id_bin));
+
+    for (size_t i = 0; i < sizeof(tox_id_hex_local) - 1; i ++)
+    {
+        tox_id_hex_local[i] = toupper(tox_id_hex_local[i]);
+    }
+
+    snprintf(toxid_str, (size_t)(TOX_ADDRESS_SIZE * 2 + 1), "%s", (const char *)tox_id_hex_local);
+}
+
+void print_tox_id(Tox *tox)
+{
+    char tox_id_hex[TOX_ADDRESS_SIZE * 2 + 1];
+    get_my_toxid(tox, tox_id_hex);
+
+    // write ToxID to toxid text file -----------
+    FILE *fp = fopen(my_toxid_filename_txt, "wb");
+
+    if (fp)
+    {
+        fprintf(fp, "%s", tox_id_hex);
+        fclose(fp);
+    }
+
+    // write ToxID to toxid text file -----------
+}
+
 void add_master(const char *public_key_hex) {
+
+    if (file_exists(masterFile))
+    {
+        toxProxyLog(2, "I already have a *MASTER*");
+        return;
+    }
+
 	toxProxyLog(2, "added master");
 	FILE *f = fopen(masterFile, "wb");
 	fwrite(public_key_hex, tox_public_key_hex_size, 1, f);
@@ -333,6 +384,12 @@ void add_master(const char *public_key_hex) {
 }
 
 bool is_master(const char *public_key_hex) {
+
+    if (!file_exists(masterFile))
+    {
+        return false;
+    }
+
 	FILE *f = fopen(masterFile, "rb");
 
 	fseek(f, 0, SEEK_END);
@@ -341,10 +398,10 @@ bool is_master(const char *public_key_hex) {
 
 	char masterPubKeyHexSaved[fsize];
 
-	fread(&masterPubKeyHexSaved, fsize, 1, f);
+	fread(masterPubKeyHexSaved, fsize, 1, f);
 	fclose(f);
 
-	if (strncmp(&masterPubKeyHexSaved, public_key_hex, tox_public_key_hex_size) == 0) {
+	if (strncmp(masterPubKeyHexSaved, public_key_hex, tox_public_key_hex_size) == 0) {
 		return true;
 	} else {
 		return false;
@@ -551,6 +608,8 @@ int main(int argc, char *argv[]) {
 	openLogFile();
 
 	Tox *tox = create_tox();
+
+    print_tox_id(tox);
 
 	tox_public_key_hex_size = tox_public_key_size() * 2 + 1;
 	tox_address_hex_size = tox_address_size() * 2 + 1;
