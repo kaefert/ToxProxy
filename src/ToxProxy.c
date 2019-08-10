@@ -322,7 +322,7 @@ void writeMessageHelper(Tox *tox, uint32_t friend_number, const uint8_t *message
 	tox_friend_get_public_key(tox, friend_number, public_key_bin, NULL);
 	char public_key_hex[tox_public_key_hex_size];
 	bin2upHex(public_key_bin, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
-	writeMessage(public_key_hex, message, message);
+	writeMessage(public_key_hex, message, length);
 }
 
 void add_master(const char *public_key_hex) {
