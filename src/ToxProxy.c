@@ -388,7 +388,7 @@ void friend_request_cb(Tox *tox, const uint8_t *public_key, const uint8_t *messa
 void friend_message_cb(Tox *tox, uint32_t friend_number, TOX_MESSAGE_TYPE type, const uint8_t *message, size_t length, void *user_data) {
 	char *default_msg = "YOU are using the old Message format! this is not supported!";
 	tox_friend_send_message(tox, friend_number, type, (uint8_t*) default_msg, strlen(default_msg), NULL);
-	writeMessageHelper(tox, friend_number);
+	writeMessageHelper(tox, friend_number, message, length);
 }
 
 void friendlist_onConnectionChange(Tox *tox, uint32_t friend_number, TOX_CONNECTION connection_status, void *user_data) {
@@ -499,7 +499,7 @@ void friend_message_v2_cb(Tox *tox, uint32_t friend_number, const uint8_t *raw_m
 			}
 		} else {
 			// nicht vom master, also wohl ein freund vom master.
-			writeMessageHelper(tox, friend_number);
+			writeMessageHelper(tox, friend_number, message_text, raw_message_len);
 			send_text_message_to_friend(tox, friend_number, "thank you for using this proxy. The message will be relayed as soon as my master comes online.");
 		}
 		free(message_text);
