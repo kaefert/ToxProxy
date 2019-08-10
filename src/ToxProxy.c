@@ -288,7 +288,10 @@ void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length) {
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	struct tm tm = *localtime(&tv.tv_sec);
-	toxProxyLog(2, "New message from %s: %s", sender_key_hex, message);
+
+	uint8_t msg_id;
+	tox_messagev2_get_message_id(message, &msg_id);
+	toxProxyLog(2, "New message with id %d from %s: %s", msg_id, sender_key_hex, message);
 
 	char userDir[tox_public_key_hex_size + strlen(msgsDir) + 1];
 	strcpy(userDir, msgsDir);
@@ -312,6 +315,14 @@ void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length) {
 	FILE *f = fopen(msgPath, "wb");
 	fwrite(message, length, 1, f);
 	fclose(f);
+}
+
+void writeMessageHelper(Tox *tox, uint32_t friend_number, const uint8_t *message, size_t length) {
+	uint8_t public_key_bin[tox_public_key_size()];
+	tox_friend_get_public_key(tox, friend_number, public_key_bin, NULL);
+	char public_key_hex[tox_public_key_hex_size];
+	bin2upHex(public_key_bin, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
+	writeMessage(public_key_hex, message, message);
 }
 
 void add_master(const char *public_key_hex) {
@@ -376,14 +387,8 @@ void friend_request_cb(Tox *tox, const uint8_t *public_key, const uint8_t *messa
 
 void friend_message_cb(Tox *tox, uint32_t friend_number, TOX_MESSAGE_TYPE type, const uint8_t *message, size_t length, void *user_data) {
 	char *default_msg = "YOU are using the old Message format! this is not supported!";
-
 	tox_friend_send_message(tox, friend_number, type, (uint8_t*) default_msg, strlen(default_msg), NULL);
-
-	uint8_t public_key_bin[tox_public_key_size()];
-	tox_friend_get_public_key(tox, friend_number, public_key_bin, NULL);
-	char public_key_hex[tox_public_key_hex_size];
-	bin2upHex(public_key_bin, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
-	writeMessage(public_key_hex, message, length);
+	writeMessageHelper(tox, friend_number);
 }
 
 void friendlist_onConnectionChange(Tox *tox, uint32_t friend_number, TOX_CONNECTION connection_status, void *user_data) {
@@ -479,30 +484,24 @@ void friend_message_v2_cb(Tox *tox, uint32_t friend_number, const uint8_t *raw_m
 		toxProxyLog(9, "friend_message_v2_cb:fn=%d res=%d msg=%s", (int) friend_number, (int) res, (char*) message_text);
 
 		if (is_master_friendnumber(tox, friend_number)) {
-			if (strlen(message_text) == strlen("fp:") + tox_public_key_hex_size) {
-				if (strncmp(message_text, "fp:", strlen("fp:"))) {
-					char *pubKey = message_text + 3;
-					uint8_t public_key_bin[tox_public_key_size()];
-					hex_string_to_bin(pubKey, tox_public_key_size() * 2, public_key_bin, tox_public_key_size());
-					tox_friend_add_norequest(tox, public_key_bin, NULL);
-					update_savedata_file(tox);
-				}
-			} else if (strlen(message_text) == strlen("DELETE_EVERYTHING")) {
-				if (strncmp(message_text, "DELETE_EVERYTHING", strlen("DELETE_EVERYTHING"))) {
-					killSwitch();
-				}
+			if (strlen(message_text) == strlen("fp:") + tox_public_key_hex_size && strncmp(message_text, "fp:", strlen("fp:"))) {
+				char *pubKey = message_text + 3;
+				uint8_t public_key_bin[tox_public_key_size()];
+				hex_string_to_bin(pubKey, tox_public_key_size() * 2, public_key_bin, tox_public_key_size());
+				tox_friend_add_norequest(tox, public_key_bin, NULL);
+				update_savedata_file(tox);
+			}
+			else if (strlen(message_text) == strlen("DELETE_EVERYTHING") && strncmp(message_text, "DELETE_EVERYTHING", strlen("DELETE_EVERYTHING"))) {
+				killSwitch();
+			}
+			else {
+				send_text_message_to_friend(tox, friend_number, "Sorry, but this command has not been understood, please check the implementation or contact the developer.");
 			}
 		} else {
 			// nicht vom master, also wohl ein freund vom master.
-			uint8_t public_key_bin[tox_public_key_size()];
-			tox_friend_get_public_key(tox, friend_number, public_key_bin, NULL);
-			char public_key_hex[tox_public_key_hex_size];
-			bin2upHex(public_key_bin, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
-			writeMessage(public_key_hex, raw_message, raw_message_len);
+			writeMessageHelper(tox, friend_number);
+			send_text_message_to_friend(tox, friend_number, "thank you for using this proxy. The message will be relayed as soon as my master comes online.");
 		}
-
-		// for now echo the message back to the friend
-		send_text_message_to_friend(tox, friend_number, (char*) message_text);
 		free(message_text);
 	}
 
