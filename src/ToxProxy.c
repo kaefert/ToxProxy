@@ -607,22 +607,61 @@ void openLogFile() {
 	setvbuf(logfile, NULL, _IONBF, 0);
 }
 
+unsigned int char_to_int(char c)
+{
+    if (c >= '0' && c <= '9')
+    {
+        return c - '0';
+    }
+
+    if (c >= 'A' && c <= 'F')
+    {
+        return 10 + c - 'A';
+    }
+
+    if (c >= 'a' && c <= 'f')
+    {
+        return 10 + c - 'a';
+    }
+
+    return -1;
+}
+
+uint8_t *hex_string_to_bin2(const char *hex_string)
+{
+    size_t len = TOX_ADDRESS_SIZE;
+    uint8_t *val = calloc(1, len);
+
+    // dbg(9, "hex_string_to_bin:len=%d\n", (int)len);
+
+    for (size_t i = 0; i != len; ++i)
+    {
+        // dbg(9, "hex_string_to_bin:%d %d\n", hex_string[2*i], hex_string[2*i+1]);
+        val[i] = (16 * char_to_int(hex_string[2 * i])) + (char_to_int(hex_string[2 * i + 1]));
+        // dbg(9, "hex_string_to_bin:i=%d val[i]=%d\n", i, (int)val[i]);
+    }
+
+    return val;
+}
+
 void send_sync_msg(Tox *tox)
 {
-    char public_key_bin[tox_public_key_size()];
-    hex_string_to_bin("CAED7884059C48B67E1C67AAB4409726435426D435E7DE55E53A6139DDAC824D", tox_public_key_hex_size, public_key_bin, tox_public_key_size());
+    char *fake_pubkey = "1234512345123451234512345123451234512345123451234512345123451234512345123451234512345123451234512345";
+    const char *entry_hex_toxid_string = fake_pubkey;
+    uint8_t *public_key_bin = hex_string_to_bin2(entry_hex_toxid_string);
 
     char* message_text = "this is a hard-coded fake test message";
-    uint32_t rawMsgSize = tox_messagev2_size(strlen(message_text)+1, TOX_FILE_KIND_MESSAGEV2_SYNC, 0);
+    uint32_t rawMsgSize = tox_messagev2_size(strlen(message_text), TOX_FILE_KIND_MESSAGEV2_SYNC, 0);
     uint8_t *raw_message = calloc(1, rawMsgSize);
     uint8_t msgid;
 
-    tox_messagev2_sync_wrap(strlen(message_text)+1, public_key_bin, message_text,
+    tox_messagev2_sync_wrap(strlen(message_text), public_key_bin, message_text,
             123, 456, raw_message, &msgid);
     bool res = tox_util_friend_send_sync_message_v2(tox, 0, raw_message, rawMsgSize, NULL);
     toxProxyLog(9, "send_sync_msg res=%d", (int)res);
     
     free(raw_message);
+    free(public_key_bin);
 }
 
 int main(int argc, char *argv[]) {
