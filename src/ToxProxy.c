@@ -510,7 +510,7 @@ void friend_message_v2_cb(Tox *tox, uint32_t friend_number, const uint8_t *raw_m
 
 void friend_lossless_packet_cb(Tox *tox, uint32_t friend_number, const uint8_t *data, size_t length, void *user_data) {
 
-	if (length <= 0) {
+	if (length == 0) {
 		toxProxyLog(0, "received empty lossless package!");
 		return;
 	}
