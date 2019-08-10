@@ -341,10 +341,10 @@ bool is_master(const char *public_key_hex) {
 
 	char masterPubKeyHexSaved[fsize];
 
-	fread(masterPubKeyHexSaved, fsize, 1, f);
+	fread(&masterPubKeyHexSaved, fsize, 1, f);
 	fclose(f);
 
-	if (strncmp(masterPubKeyHexSaved, public_key_hex, tox_public_key_hex_size) == 0) {
+	if (strncmp(&masterPubKeyHexSaved, public_key_hex, tox_public_key_hex_size) == 0) {
 		return true;
 	} else {
 		return false;
