@@ -94,7 +94,7 @@ const char *savedata_tmp_filename = "ToxProxy_SaveData.tox.tmp";
 const char *empty_log_message = "empty log message received!";
 const char *msgsDir = "./messages";
 const char *masterFile = "ToxProxyMasterPubKey.txt";
-const char *my_toxid_filename_txt = "toxid.txt";
+const char *my_toxid_filename_txt = "ToxProxy_ToxID.txt";
 
 
 uint32_t tox_public_key_hex_size = 0; //initialized in main
