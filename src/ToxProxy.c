@@ -81,11 +81,12 @@ typedef struct DHT_node {
 #define CLEAR(x) memset(&(x), 0, sizeof(x))
 
 
-typedef enum ControlProxyMessageType {
-	ControlProxyMessageType_pubKey = 200,
-	ControlProxyMessageType_killSwitch = 201,
-	ControlProxyMessageType_allMessagesSent = 202
-} ControlProxyMessageType;
+typedef enum CONTROL_PROXY_MESSAGE_TYPE {
+	CONTROL_PROXY_MESSAGE_TYPE_FRIEND_PUBKEY_FOR_PROXY = 175,
+	CONTROL_PROXY_MESSAGE_TYPE_PROXY_PUBKEY_FOR_FRIEND = 176,
+	CONTROL_PROXY_MESSAGE_TYPE_ALL_MESSAGES_SENT = 177,
+	CONTROL_PROXY_MESSAGE_TYPE_PROXY_KILL_SWITCH = 178
+} CONTROL_PROXY_MESSAGE_TYPE;
 
 FILE *logfile = NULL;
 const char *savedata_filename = "ToxProxy_SaveData.tox";
@@ -459,7 +460,8 @@ void friend_request_cb(Tox *tox, const uint8_t *public_key, const uint8_t *messa
 void friend_message_cb(Tox *tox, uint32_t friend_number, TOX_MESSAGE_TYPE type, const uint8_t *message, size_t length, void *user_data) {
 	char *default_msg = "YOU are using the old Message format! this is not supported!";
 	tox_friend_send_message(tox, friend_number, type, (uint8_t*) default_msg, strlen(default_msg), NULL);
-	writeMessageHelper(tox, friend_number, message, length);
+	// WARNING: Don't write v1 message because it's missing metadata that is expected. If you wan't compatibility to v1, a lot more must me changed!
+	//writeMessageHelper(tox, friend_number, message, length);
 }
 
 //
@@ -496,12 +498,10 @@ void friendlist_onConnectionChange(Tox *tox, uint32_t friend_number, TOX_CONNECT
 	if (is_master_friendnumber(tox, friend_number)) {
 		if (connection_status != TOX_CONNECTION_NONE) {
 			toxProxyLog(2, "master is online, send him all cached unsent messages");
-			// send_text_message_to_friend(tox, friend_number, "Hello master! I just saw you coming online! If it where implemented, I'd send you all the messages I've received in your absence now.");
-			//TODO FIXME IMPLEMENT sending all messages that don't have an already sent marker
-            global_master_comes_online = true;
+			global_master_comes_online = true;
 		} else {
 			toxProxyLog(2, "master went offline, don't send him any more messages.");
-			//TODO FIXME make a global boolean toggle to use in the message sending loop to cancel sending more messages
+			global_master_comes_online = false;
 		}
 	}
 }
@@ -559,7 +559,7 @@ void friend_message_v2_cb(Tox *tox, uint32_t friend_number, const uint8_t *raw_m
 			}
 		} else {
 			// nicht vom master, also wohl ein freund vom master.
-			writeMessageHelper(tox, friend_number, message_text, raw_message_len);
+			writeMessageHelper(tox, friend_number, raw_message, raw_message_len);
 			send_text_message_to_friend(tox, friend_number, "thank you for using this proxy. The message will be relayed as soon as my master comes online.");
 		}
 		free(message_text);
@@ -580,16 +580,19 @@ void friend_lossless_packet_cb(Tox *tox, uint32_t friend_number, const uint8_t *
 		return;
 	}
 
-	if (data[0] == ControlProxyMessageType_killSwitch) {
+	if (data[0] == CONTROL_PROXY_MESSAGE_TYPE_PROXY_KILL_SWITCH) {
 		killSwitch();
-	} else if (data[0] == ControlProxyMessageType_pubKey) {
+	} else if (data[0] == CONTROL_PROXY_MESSAGE_TYPE_FRIEND_PUBKEY_FOR_PROXY) {
 		if (length != tox_public_key_size() + 1) {
 			toxProxyLog(0, "received ControlProxyMessageType_pubKey message with wrong size");
 			return;
 		}
 		const uint8_t *public_key = data + 1;
-		tox_friend_add_norequest(tox, public_key, NULL);
-		update_savedata_file(tox);
+		//tox_friend_add_norequest(tox, public_key, NULL);
+		//update_savedata_file(tox);
+		char public_key_hex[tox_public_key_hex_size];
+			bin2upHex(public_key, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
+		toxProxyLog(0, "added friend [NOT] of my master (norequest) with pubkey: %s", public_key_hex);
 	} else {
 		toxProxyLog(0, "received unexpected ControlProxyMessageType");
 	}
@@ -644,8 +647,45 @@ uint8_t *hex_string_to_bin2(const char *hex_string)
     return val;
 }
 
-void send_sync_msg(Tox *tox)
-{
+void send_sync_msgs_of_friend(Tox *tox, char *pubKeyHex) {
+	toxProxyLog(3, "sending messages of friend: %s to master", pubKeyHex);
+
+	char *friendDir[strlen(msgsDir) + 1 + strlen(pubKeyHex)];
+    sprintf(friendDir , "%s/%s",msgsDir,pubKeyHex);
+
+	DIR *dfd;
+
+	if ((dfd = opendir(friendDir)) == NULL) {
+		toxProxyLog(1, "Can't open msgsDir for sending messages to master (maybe no single message has been received yet?)");
+		return;
+	}
+
+	struct dirent *dp;
+
+	char filename_qfd[260];
+	// char new_name_qfd[100];
+
+	while ((dp = readdir(dfd)) != NULL) {
+		if(strncmp(dp->d_name, ".", 1) != 0 && strncmp(dp->d_name, "..", 2) != 0) {
+			toxProxyLog(2, "found message by %s with filename %s", pubKeyHex, dp->d_name);
+		}
+	}
+}
+
+void send_sync_msgs(Tox *tox) {
+
+	DIR *dfd;
+	if ((dfd = opendir(msgsDir)) == NULL) {
+		toxProxyLog(1, "Can't open msgsDir for sending messages to master (maybe no single message has been received yet?)");
+		return;
+	}
+	struct dirent *dp;
+	while ((dp = readdir(dfd)) != NULL) {
+		if(strncmp(dp->d_name, ".", 1) != 0 && strncmp(dp->d_name, "..", 2) != 0) {
+			send_sync_msgs_of_friend(tox, dp->d_name);
+		}
+	}
+
     char *fake_pubkey = "1234512345123451234512345123451234512345123451234512345123451234512345123451234512345123451234512345";
     const char *entry_hex_toxid_string = fake_pubkey;
     uint8_t *public_key_bin = hex_string_to_bin2(entry_hex_toxid_string);
@@ -764,7 +804,7 @@ int main(int argc, char *argv[]) {
         if (global_master_comes_online == true)
         {
             toxProxyLog(2, "send_sync_msg");
-            send_sync_msg(tox);
+            send_sync_msgs(tox);
             global_master_comes_online = false;
         }
 	}
