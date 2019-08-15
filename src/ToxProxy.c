@@ -88,11 +88,11 @@ typedef enum ControlProxyMessageType {
 } ControlProxyMessageType;
 
 FILE *logfile = NULL;
-const char *savedata_filename = "ToxProxy_SaveData.tox";
-const char *savedata_tmp_filename = "ToxProxy_SaveData.tox.tmp";
+const char *savedata_filename = "./db/ToxProxy_SaveData.tox";
+const char *savedata_tmp_filename = "./db/ToxProxy_SaveData.tox.tmp";
 const char *empty_log_message = "empty log message received!";
 const char *msgsDir = "./messages";
-const char *masterFile = "ToxProxyMasterPubKey.txt";
+const char *masterFile = "./db/ToxProxyMasterPubKey.txt";
 const char *my_toxid_filename_txt = "toxid.txt";
 
 
