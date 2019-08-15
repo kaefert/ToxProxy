@@ -655,10 +655,10 @@ void send_sync_msg(Tox *tox)
     uint8_t *raw_message = calloc(1, rawMsgSize);
     uint8_t msgid;
 
-    tox_messagev2_sync_wrap(strlen(message_text), public_key_bin, message_text,
-            123, 456, raw_message, &msgid);
-    bool res = tox_util_friend_send_sync_message_v2(tox, 0, raw_message, rawMsgSize, NULL);
-    toxProxyLog(9, "send_sync_msg res=%d", (int)res);
+    //tox_messagev2_sync_wrap(strlen(message_text), public_key_bin, message_text,
+    //        123, 456, raw_message, &msgid);
+    //bool res = tox_util_friend_send_sync_message_v2(tox, 0, raw_message, rawMsgSize, NULL);
+    //toxProxyLog(9, "send_sync_msg res=%d", (int)res);
     
     free(raw_message);
     free(public_key_bin);
