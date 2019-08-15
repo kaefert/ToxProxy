@@ -652,16 +652,31 @@ void send_sync_msg(Tox *tox)
     uint8_t *public_key_bin = hex_string_to_bin2(entry_hex_toxid_string);
 
     char* message_text = "this is a hard-coded fake test message";
-    uint32_t rawMsgSize = tox_messagev2_size(strlen(message_text), TOX_FILE_KIND_MESSAGEV2_SYNC, 0);
+    uint32_t rawMsgSize = tox_messagev2_size(strlen(message_text), TOX_FILE_KIND_MESSAGEV2_SEND, 0);
     uint8_t *raw_message = calloc(1, rawMsgSize);
-    uint8_t msgid;
+    uint8_t *msgid = calloc(1, TOX_PUBLIC_KEY_SIZE);
 
-    //tox_messagev2_sync_wrap(strlen(message_text), public_key_bin, message_text,
-    //        123, 456, raw_message, &msgid);
-    //bool res = tox_util_friend_send_sync_message_v2(tox, 0, raw_message, rawMsgSize, NULL);
-    //toxProxyLog(9, "send_sync_msg res=%d", (int)res);
+
+    tox_messagev2_wrap(strlen(message_text), TOX_FILE_KIND_MESSAGEV2_SEND, 0,
+                        message_text, 0, 0, raw_message, msgid);
+
+
+    uint32_t rawMsgSize2 = tox_messagev2_size(rawMsgSize, TOX_FILE_KIND_MESSAGEV2_SYNC, 0);
+    uint8_t *raw_message2 = calloc(1, rawMsgSize2);
+    uint8_t *msgid2 = calloc(1, TOX_PUBLIC_KEY_SIZE);
+
+    tox_messagev2_sync_wrap(rawMsgSize, public_key_bin, TOX_FILE_KIND_MESSAGEV2_SEND,
+                            raw_message, 123, 456, raw_message2, msgid2);
+
+    bool res = tox_util_friend_send_sync_message_v2(tox, 0, raw_message2, rawMsgSize2, NULL);
+    toxProxyLog(9, "send_sync_msg res=%d", (int)res);
     
     free(raw_message);
+    free(msgid);
+
+    free(raw_message2);
+    free(msgid2);
+
     free(public_key_bin);
 }
 
