@@ -88,11 +88,12 @@ typedef enum ControlProxyMessageType {
 } ControlProxyMessageType;
 
 FILE *logfile = NULL;
+const char *log_filename = "toxblinkenwall.log";
 const char *savedata_filename = "./db/savedata.tox";
 const char *savedata_tmp_filename = "./db/savedata.tox.tmp";
 const char *empty_log_message = "empty log message received!";
 const char *msgsDir = "./messages";
-const char *masterFile = "./db/ToxProxyMasterPubKey.txt";
+const char *masterFile = "./db/toxproxymasterpubkey.txt";
 const char *my_toxid_filename_txt = "toxid.txt";
 
 
@@ -145,9 +146,12 @@ void toxProxyLog(int level, const char *msg, ...) {
 
 	if (level <= CURRENT_LOG_LEVEL) {
 		va_list ap;
+
+#ifdef LOG2STDOUT
 		va_start(ap, msg);
 		vprintf(buffer, ap);
 		va_end(ap);
+#endif
 
 		if (logfile) {
 			va_start(ap, msg);
@@ -599,9 +603,6 @@ void openLogFile() {
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	struct tm tm = *localtime(&tv.tv_sec);
-	char log_filename[strlen("ToxProxy_0000-00-00_0000-00,000000.log") + 1];
-	snprintf(log_filename, sizeof(log_filename), "ToxProxy_%04d-%02d-%02d_%02d%02d-%02d,%06ld.log", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour,
-			tm.tm_min, tm.tm_sec, tv.tv_usec);
 
 	logfile = fopen(log_filename, "wb");
 	setvbuf(logfile, NULL, _IONBF, 0);
