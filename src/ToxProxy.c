@@ -663,7 +663,7 @@ void send_sync_msg(Tox *tox)
 
 
     tox_messagev2_wrap(strlen(message_text), TOX_FILE_KIND_MESSAGEV2_SEND, 0,
-                        message_text, 0, 0, raw_message, msgid);
+                        message_text, 987, 345, raw_message, msgid);
 
 
     uint32_t rawMsgSize2 = tox_messagev2_size(rawMsgSize, TOX_FILE_KIND_MESSAGEV2_SYNC, 0);
