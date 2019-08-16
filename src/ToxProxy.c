@@ -81,11 +81,12 @@ typedef struct DHT_node {
 #define CLEAR(x) memset(&(x), 0, sizeof(x))
 
 
-typedef enum ControlProxyMessageType {
-	ControlProxyMessageType_pubKey = 200,
-	ControlProxyMessageType_killSwitch = 201,
-	ControlProxyMessageType_allMessagesSent = 202
-} ControlProxyMessageType;
+typedef enum CONTROL_PROXY_MESSAGE_TYPE {
+	CONTROL_PROXY_MESSAGE_TYPE_FRIEND_PUBKEY_FOR_PROXY = 175,
+	CONTROL_PROXY_MESSAGE_TYPE_PROXY_PUBKEY_FOR_FRIEND = 176,
+	CONTROL_PROXY_MESSAGE_TYPE_ALL_MESSAGES_SENT = 177,
+	CONTROL_PROXY_MESSAGE_TYPE_PROXY_KILL_SWITCH = 178
+} CONTROL_PROXY_MESSAGE_TYPE;
 
 FILE *logfile = NULL;
 const char *log_filename = "toxblinkenwall.log";
@@ -463,7 +464,8 @@ void friend_request_cb(Tox *tox, const uint8_t *public_key, const uint8_t *messa
 void friend_message_cb(Tox *tox, uint32_t friend_number, TOX_MESSAGE_TYPE type, const uint8_t *message, size_t length, void *user_data) {
 	char *default_msg = "YOU are using the old Message format! this is not supported!";
 	tox_friend_send_message(tox, friend_number, type, (uint8_t*) default_msg, strlen(default_msg), NULL);
-	writeMessageHelper(tox, friend_number, message, length);
+    // WARNING: Don't write v1 message because it's missing metadata that is expected. If you wan't compatibility to v1, a lot more must me changed!
+	// writeMessageHelper(tox, friend_number, message, length);
 }
 
 //
@@ -563,7 +565,7 @@ void friend_message_v2_cb(Tox *tox, uint32_t friend_number, const uint8_t *raw_m
 			}
 		} else {
 			// nicht vom master, also wohl ein freund vom master.
-			writeMessageHelper(tox, friend_number, message_text, raw_message_len);
+			writeMessageHelper(tox, friend_number, raw_message, raw_message_len);
 			send_text_message_to_friend(tox, friend_number, "thank you for using this proxy. The message will be relayed as soon as my master comes online.");
 		}
 		free(message_text);
@@ -584,16 +586,19 @@ void friend_lossless_packet_cb(Tox *tox, uint32_t friend_number, const uint8_t *
 		return;
 	}
 
-	if (data[0] == ControlProxyMessageType_killSwitch) {
+	if (data[0] == CONTROL_PROXY_MESSAGE_TYPE_PROXY_KILL_SWITCH) {
 		killSwitch();
-	} else if (data[0] == ControlProxyMessageType_pubKey) {
+	} else if (data[0] == CONTROL_PROXY_MESSAGE_TYPE_FRIEND_PUBKEY_FOR_PROXY) {
 		if (length != tox_public_key_size() + 1) {
 			toxProxyLog(0, "received ControlProxyMessageType_pubKey message with wrong size");
 			return;
 		}
 		const uint8_t *public_key = data + 1;
-		tox_friend_add_norequest(tox, public_key, NULL);
-		update_savedata_file(tox);
+		// tox_friend_add_norequest(tox, public_key, NULL);
+		// update_savedata_file(tox);
+        char public_key_hex[tox_public_key_hex_size];
+        bin2upHex(public_key, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
+        toxProxyLog(0, "added friend [NOT] of my master (norequest) with pubkey: %s", public_key_hex);
 	} else {
 		toxProxyLog(0, "received unexpected ControlProxyMessageType");
 	}
