@@ -801,6 +801,26 @@ void friend_message_v2_cb(Tox *tox, uint32_t friend_number, const uint8_t *raw_m
 #endif
 }
 
+void send_lossless_packet_demo(Tox *tox, uint32_t friend_number)
+{
+    size_t len = tox_public_key_size() + 1;
+    uint8_t *data = calloc(1, len);
+    TOX_ERR_FRIEND_CUSTOM_PACKET error;
+    char *fake_pubkey = "AFC4512345123451234512345123451234512345123451234512345123451234512345123451234512345123451234512CDE";
+
+    const char *entry_hex_toxid_string = fake_pubkey;
+    uint8_t *public_key_bin = hex_string_to_bin2(entry_hex_toxid_string);
+
+    memcpy(data + 1, public_key_bin, tox_public_key_size());
+    data[0] = (uint8_t)CONTROL_PROXY_MESSAGE_TYPE_PROXY_PUBKEY_FOR_FRIEND;
+
+    toxProxyLog(0, "send lossless demo msg");
+    tox_friend_send_lossless_packet(tox, friend_number, data, len, &error);
+
+    free(data);
+    free(public_key_bin);
+}
+
 void friend_lossless_packet_cb(Tox *tox, uint32_t friend_number, const uint8_t *data, size_t length, void *user_data) {
 
 	if (length == 0) {
@@ -877,13 +897,13 @@ uint8_t *hex_string_to_bin2(const char *hex_string)
     return val;
 }
 
-void send_sync_msg(Tox *tox)
+void send_sync_msg(Tox *tox, uint32_t friend_number)
 {
     char *fake_pubkey = "1234512345123451234512345123451234512345123451234512345123451234512345123451234512345123451234512345";
     const char *entry_hex_toxid_string = fake_pubkey;
     uint8_t *public_key_bin = hex_string_to_bin2(entry_hex_toxid_string);
 
-    char* message_text = "this is a hard-coded fake test message";
+    char* message_text = "START-äöthis is a hßard-coded fake test message@€€-END";
     uint32_t rawMsgSize = tox_messagev2_size(strlen(message_text), TOX_FILE_KIND_MESSAGEV2_SEND, 0);
     uint8_t *raw_message = calloc(1, rawMsgSize);
     uint8_t *msgid = calloc(1, TOX_PUBLIC_KEY_SIZE);
@@ -900,7 +920,7 @@ void send_sync_msg(Tox *tox)
     tox_messagev2_sync_wrap(rawMsgSize, public_key_bin, TOX_FILE_KIND_MESSAGEV2_SEND,
                             raw_message, 123, 456, raw_message2, msgid2);
 
-    bool res = tox_util_friend_send_sync_message_v2(tox, 0, raw_message2, rawMsgSize2, NULL);
+    bool res = tox_util_friend_send_sync_message_v2(tox, friend_number, raw_message2, rawMsgSize2, NULL);
     toxProxyLog(9, "send_sync_msg res=%d", (int)res);
     
     free(raw_message);
@@ -1017,6 +1037,8 @@ int main(int argc, char *argv[]) {
         {
             toxProxyLog(2, "send_sync_msg");
             send_sync_msg(tox);
+            toxProxyLog(2, "send_sync_msg");
+            send_lossless_packet_demo(tox, 0);
             global_master_comes_online = false;
         }
 
