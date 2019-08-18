@@ -110,12 +110,8 @@ uint32_t tox_address_hex_size = 0; //initialized in main
 int tox_loop_running = 1;
 bool global_master_comes_online = false;
 
-void bin2upHex(const uint8_t *bin, uint32_t bin_size, char *hex, uint32_t hex_size) {
-	sodium_bin2hex(hex, hex_size, bin, bin_size);
-	for (size_t i = 0; i < hex_size - 1; i++) {
-		hex[i] = toupper(hex[i]);
-	}
-}
+
+
 
 void toxProxyLog(int level, const char *msg, ...) {
 	struct timeval tv;
@@ -169,15 +165,6 @@ void toxProxyLog(int level, const char *msg, ...) {
 	}
 }
 
-void killSwitch() {
-	toxProxyLog(2, "got killSwitch command, deleting all data");
-	unlink(savedata_filename);
-	unlink(masterFile);
-	toxProxyLog(1, "todo implement deleting messages");
-	tox_loop_running = 0;
-	exit(0);
-}
-
 time_t get_unix_time(void) {
 	return time(NULL);
 }
@@ -191,6 +178,50 @@ void usleep_usec(uint64_t usec) {
 
 void tox_log_cb__custom(Tox *tox, TOX_LOG_LEVEL level, const char *file, uint32_t line, const char *func, const char *message, void *user_data) {
 	toxProxyLog(9, "%d:%s:%d:%s:%s", (int) level, file, (int) line, func, message);
+}
+
+void bin2upHex(const uint8_t *bin, uint32_t bin_size, char *hex, uint32_t hex_size) {
+	sodium_bin2hex(hex, hex_size, bin, bin_size);
+	for (size_t i = 0; i < hex_size - 1; i++) {
+		hex[i] = toupper(hex[i]);
+	}
+}
+
+unsigned int char_to_int(char c)
+{
+    if (c >= '0' && c <= '9')
+    {
+        return c - '0';
+    }
+
+    if (c >= 'A' && c <= 'F')
+    {
+        return 10 + c - 'A';
+    }
+
+    if (c >= 'a' && c <= 'f')
+    {
+        return 10 + c - 'a';
+    }
+
+    return -1;
+}
+
+uint8_t *hex_string_to_bin2(const char *hex_string)
+{
+    size_t len = TOX_ADDRESS_SIZE;
+    uint8_t *val = calloc(1, len);
+
+    // dbg(9, "hex_string_to_bin:len=%d\n", (int)len);
+
+    for (size_t i = 0; i != len; ++i)
+    {
+        // dbg(9, "hex_string_to_bin:%d %d\n", hex_string[2*i], hex_string[2*i+1]);
+        val[i] = (16 * char_to_int(hex_string[2 * i])) + (char_to_int(hex_string[2 * i + 1]));
+        // dbg(9, "hex_string_to_bin:i=%d val[i]=%d\n", i, (int)val[i]);
+    }
+
+    return val;
 }
 
 void on_start()
@@ -230,6 +261,14 @@ void on_offline()
     }
 }
 
+void killSwitch() {
+	toxProxyLog(2, "got killSwitch command, deleting all data");
+	unlink(savedata_filename);
+	unlink(masterFile);
+	toxProxyLog(1, "todo implement deleting messages");
+	tox_loop_running = 0;
+	exit(0);
+}
 
 Tox* create_tox() {
 	Tox *tox = NULL;
@@ -806,7 +845,7 @@ void send_lossless_packet_demo(Tox *tox, uint32_t friend_number)
     size_t len = tox_public_key_size() + 1;
     uint8_t *data = calloc(1, len);
     TOX_ERR_FRIEND_CUSTOM_PACKET error;
-    char *fake_pubkey = "AFC4512345123451234512345123451234512345123451234512345123451234512345123451234512345123451234512CDE";
+    char *fake_pubkey = "AFC4512345123451234512345123451234512345123451234512345123451CDE";
 
     const char *entry_hex_toxid_string = fake_pubkey;
     uint8_t *public_key_bin = hex_string_to_bin2(entry_hex_toxid_string);
@@ -858,43 +897,6 @@ void openLogFile() {
 
 	logfile = fopen(log_filename, "wb");
 	setvbuf(logfile, NULL, _IONBF, 0);
-}
-
-unsigned int char_to_int(char c)
-{
-    if (c >= '0' && c <= '9')
-    {
-        return c - '0';
-    }
-
-    if (c >= 'A' && c <= 'F')
-    {
-        return 10 + c - 'A';
-    }
-
-    if (c >= 'a' && c <= 'f')
-    {
-        return 10 + c - 'a';
-    }
-
-    return -1;
-}
-
-uint8_t *hex_string_to_bin2(const char *hex_string)
-{
-    size_t len = TOX_ADDRESS_SIZE;
-    uint8_t *val = calloc(1, len);
-
-    // dbg(9, "hex_string_to_bin:len=%d\n", (int)len);
-
-    for (size_t i = 0; i != len; ++i)
-    {
-        // dbg(9, "hex_string_to_bin:%d %d\n", hex_string[2*i], hex_string[2*i+1]);
-        val[i] = (16 * char_to_int(hex_string[2 * i])) + (char_to_int(hex_string[2 * i + 1]));
-        // dbg(9, "hex_string_to_bin:i=%d val[i]=%d\n", i, (int)val[i]);
-    }
-
-    return val;
 }
 
 void send_sync_msg(Tox *tox, uint32_t friend_number)
@@ -1036,8 +1038,8 @@ int main(int argc, char *argv[]) {
         if (global_master_comes_online == true)
         {
             toxProxyLog(2, "send_sync_msg");
-            send_sync_msg(tox);
-            toxProxyLog(2, "send_sync_msg");
+            send_sync_msg(tox, 0);
+            toxProxyLog(2, "send_lossless_packet_demo");
             send_lossless_packet_demo(tox, 0);
             global_master_comes_online = false;
         }
