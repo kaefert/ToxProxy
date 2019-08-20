@@ -5,6 +5,8 @@
  Version     : 0.1
  Copyright   : 2019
 
+Zoff sagt: wichtig: erste relay message am 20.08.2019 um 20:31 gesendet und richtig angezeigt.
+
  This program is free software: you can redistribute it and/or modify
  it under the terms of the GNU Affero General Public License as
  published by the Free Software Foundation, either version 3 of the
@@ -69,6 +71,9 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+// https://www.tutorialspoint.com/sqlite/sqlite_c_cpp
+#include <sqlite3.h>
+
 typedef struct DHT_node {
 	const char *ip;
 	uint16_t port;
@@ -96,6 +101,7 @@ const char *msgsDir = "./messages";
 const char *masterFile = "ToxProxyMasterPubKey.txt";
 const char *my_toxid_filename_txt = "ToxProxy_ToxID.txt";
 
+const char *database_filename = "ToxProxy.db";
 
 uint32_t tox_public_key_hex_size = 0; //initialized in main
 uint32_t tox_address_hex_size = 0; //initialized in main
@@ -244,6 +250,36 @@ void sigint_handler(int signo) {
 	}
 }
 
+void sqlite_createSaveDataTable(sqlite3 *db) {
+	char *zErrMsg = 0;
+	int rc;
+
+	const char *sql_SaveData_CreateTable = \
+	"CREATE TABLE ToxCoreSaveData(" \
+	"ID INT PRIMARY KEY     NOT NULL," \
+	"DATA           BLOB    NOT NULL );";
+
+	rc = sqlite3_exec(db, sql_SaveData_CreateTable, NULL, 0, &zErrMsg);
+
+	if (rc != SQLITE_OK) {
+		toxProxyLog(0, "SQL error: %s", zErrMsg);
+		sqlite3_free(zErrMsg);
+	} else {
+		toxProxyLog(2, "Table created successfully");
+	}
+	sqlite3_close(db);
+}
+
+static int select_savedata_count_callback(void *data, int argc, char **argv, char **azColName) {
+	int i;
+	toxProxyLog(2, "select_callback called.");
+
+	for (i = 0; i < argc; i++) {
+		toxProxyLog(2, "select_callback received column: %s = %s", azColName[i], argv[i] ? argv[i] : "NULL");
+	}
+	return 0;
+}
+
 void update_savedata_file(const Tox *tox) {
 	size_t size = tox_get_savedata_size(tox);
 	uint8_t *savedata = malloc(size);
@@ -256,10 +292,49 @@ void update_savedata_file(const Tox *tox) {
 	rename(savedata_tmp_filename, savedata_filename);
 
 	free(savedata);
+
+	// below is an incomplete sqlite replacement of filebased version above.
+	// can delete above when implementation of sqlite version is complete
+	// (also in other related functions) or delete below if sqlite implementation is canceled.
+
+	sqlite3 *db;
+	int rc;
+	char *zErrMsg = 0;
+
+	rc = sqlite3_open(database_filename, &db);
+
+	if (rc) {
+		toxProxyLog(0, "Can't open database: %s", sqlite3_errmsg(db));
+		return;
+	} else {
+		toxProxyLog(2, "Opened database successfully");
+	}
+
+	/* Create SQL statement */
+	const char* sql = "SELECT COUNT(*) FROM ToxCoreSaveData";
+
+	/* Execute SQL statement */
+	rc = sqlite3_exec(db, sql, select_savedata_count_callback, NULL, &zErrMsg);
+
+	if (rc != SQLITE_OK) {
+		if(strcmp("sqlite_createSaveDataTable", zErrMsg) == 0) {
+			sqlite_createSaveDataTable(&db);
+		}
+		else {
+			toxProxyLog(0, "SQL error: %s", zErrMsg);
+		}
+		sqlite3_free(zErrMsg);
+	} else {
+		toxProxyLog(2, "Operation done successfully");
+	}
+
+	sqlite3_close(db);
 }
 
 void bootstrap(Tox *tox)
 {
+	// https://nodes.tox.chat/json
+
     DHT_node nodes[] =
     {
         {"178.62.250.138",             33445, "788236D34978D1D5BD822F0A5BEBD2C53C64CC31CD3149350EE27D4D9A2F9B6B", {0}},
@@ -560,7 +635,8 @@ void friend_message_v2_cb(Tox *tox, uint32_t friend_number, const uint8_t *raw_m
 		} else {
 			// nicht vom master, also wohl ein freund vom master.
 			writeMessageHelper(tox, friend_number, raw_message, raw_message_len);
-			send_text_message_to_friend(tox, friend_number, "thank you for using this proxy. The message will be relayed as soon as my master comes online.");
+			//TODO FIXME send acknowledgment here (message v2 ohne text mit wrapper = kompliziert laut tox, 3 bis 4 functions aufruf notwendig)
+			// send_text_message_to_friend(tox, friend_number, "thank you for using this proxy. The message will be relayed as soon as my master comes online.");
 		}
 		free(message_text);
 	}
@@ -588,11 +664,11 @@ void friend_lossless_packet_cb(Tox *tox, uint32_t friend_number, const uint8_t *
 			return;
 		}
 		const uint8_t *public_key = data + 1;
-		//tox_friend_add_norequest(tox, public_key, NULL);
-		//update_savedata_file(tox);
+		tox_friend_add_norequest(tox, public_key, NULL);
+		update_savedata_file(tox);
 		char public_key_hex[tox_public_key_hex_size];
 			bin2upHex(public_key, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
-		toxProxyLog(0, "added friend [NOT] of my master (norequest) with pubkey: %s", public_key_hex);
+		toxProxyLog(0, "added friend of my master (norequest) with pubkey: %s", public_key_hex);
 	} else {
 		toxProxyLog(0, "received unexpected ControlProxyMessageType");
 	}
@@ -630,10 +706,9 @@ unsigned int char_to_int(char c)
     return -1;
 }
 
-uint8_t *hex_string_to_bin2(const char *hex_string)
-{
-    size_t len = TOX_ADDRESS_SIZE;
-    uint8_t *val = calloc(1, len);
+uint8_t* hex_string_to_bin2(const char *hex_string) {
+	size_t len = TOX_ADDRESS_SIZE;
+	uint8_t *val = calloc(1, len);
 
     // dbg(9, "hex_string_to_bin:len=%d\n", (int)len);
 
@@ -647,8 +722,51 @@ uint8_t *hex_string_to_bin2(const char *hex_string)
     return val;
 }
 
+void send_sync_msg_single(Tox *tox, char *pubKeyHex, char *msgFileName) {
+
+	char *msgPath[strlen(msgsDir) + 1 + strlen(pubKeyHex) + 1 + strlen(msgFileName)];
+	sprintf(msgPath , "%s/%s/%s",msgsDir,pubKeyHex,msgFileName);
+
+	FILE *f = fopen(msgPath, "rb");
+	if (f) {
+		fseek(f, 0, SEEK_END);
+		long fsize = ftell(f);
+		fseek(f, 0, SEEK_SET);
+
+		uint8_t *rawMsgData = malloc(fsize);
+
+		size_t ret = fread(rawMsgData, fsize, 1, f);
+		// TODO: handle ret return vlaue here!
+		if (ret) {
+			// ------
+		}
+		fclose(f);
+
+
+	    uint32_t rawMsgSize2 = tox_messagev2_size(fsize, TOX_FILE_KIND_MESSAGEV2_SYNC, 0);
+	    uint8_t *raw_message2 = calloc(1, rawMsgSize2);
+	    uint8_t *msgid2 = calloc(1, TOX_PUBLIC_KEY_SIZE);
+	    uint8_t* pubKeyBin = hex_string_to_bin2(pubKeyHex);
+
+	    tox_messagev2_sync_wrap(fsize, pubKeyBin, TOX_FILE_KIND_MESSAGEV2_SEND,
+	    		rawMsgData, 123, 456, raw_message2, msgid2);
+	    toxProxyLog(9, "wrapped raw message = %p", raw_message2);
+
+	    TOX_ERR_FRIEND_SEND_MESSAGE error;
+	    bool res2 = tox_util_friend_send_sync_message_v2(tox, 0, raw_message2, rawMsgSize2, &error);
+	    toxProxyLog(9, "send_sync_msg res=%d; error=%d", (int)res2, error);
+
+	    free(rawMsgData);
+	    free(raw_message2);
+	    free(pubKeyBin);
+	    free(msgid2);
+
+	    unlink(msgPath);
+	}
+}
+
 void send_sync_msgs_of_friend(Tox *tox, char *pubKeyHex) {
-	toxProxyLog(3, "sending messages of friend: %s to master", pubKeyHex);
+	//toxProxyLog(3, "sending messages of friend: %s to master", pubKeyHex);
 
 	char *friendDir[strlen(msgsDir) + 1 + strlen(pubKeyHex)];
     sprintf(friendDir , "%s/%s",msgsDir,pubKeyHex);
@@ -668,12 +786,14 @@ void send_sync_msgs_of_friend(Tox *tox, char *pubKeyHex) {
 	while ((dp = readdir(dfd)) != NULL) {
 		if(strncmp(dp->d_name, ".", 1) != 0 && strncmp(dp->d_name, "..", 2) != 0) {
 			toxProxyLog(2, "found message by %s with filename %s", pubKeyHex, dp->d_name);
+			send_sync_msg_single(tox, pubKeyHex, dp->d_name);
 		}
 	}
 }
 
 void send_sync_msgs(Tox *tox) {
 
+	// loop over all directories = public-keys of friends we have received messages from
 	DIR *dfd;
 	if ((dfd = opendir(msgsDir)) == NULL) {
 		toxProxyLog(1, "Can't open msgsDir for sending messages to master (maybe no single message has been received yet?)");
@@ -686,21 +806,21 @@ void send_sync_msgs(Tox *tox) {
 		}
 	}
 
-    char *fake_pubkey = "1234512345123451234512345123451234512345123451234512345123451234512345123451234512345123451234512345";
-    const char *entry_hex_toxid_string = fake_pubkey;
-    uint8_t *public_key_bin = hex_string_to_bin2(entry_hex_toxid_string);
+//    char *fake_pubkey = "1234512345123451234512345123451234512345123451234512345123451234512345123451234512345123451234512345";
+//    const char *entry_hex_toxid_string = fake_pubkey;
+//    uint8_t *public_key_bin = hex_string_to_bin2(entry_hex_toxid_string);
+//
+//    char* message_text = "this is a hard-coded fake test message";
+//    uint32_t rawMsgSize = tox_messagev2_size(strlen(message_text), TOX_FILE_KIND_MESSAGEV2_SYNC, 0);
+//    uint8_t *raw_message = calloc(1, rawMsgSize);
+//    uint8_t msgid;
 
-    char* message_text = "this is a hard-coded fake test message";
-    uint32_t rawMsgSize = tox_messagev2_size(strlen(message_text), TOX_FILE_KIND_MESSAGEV2_SYNC, 0);
-    uint8_t *raw_message = calloc(1, rawMsgSize);
-    uint8_t msgid;
-
-    tox_messagev2_sync_wrap(strlen(message_text), public_key_bin, TOX_FILE_KIND_MESSAGEV2_SEND, message_text,123, 456, raw_message, &msgid);
-    bool res = tox_util_friend_send_sync_message_v2(tox, 0, raw_message, rawMsgSize, NULL);
-    toxProxyLog(9, "send_sync_msg res=%d", (int)res);
+    //tox_messagev2_fsync_wrap(strlen(message_text), public_key_bin, TOX_FILE_KIND_MESSAGEV2_SEND, message_text,123, 456, raw_message, &msgid);
+    //bool res = tox_util_friend_send_sync_message_v2(tox, 0, raw_message, rawMsgSize, NULL);
+    //toxProxyLog(9, "send_sync_msg res=%d", (int)res);
     
-    free(raw_message);
-    free(public_key_bin);
+//    free(raw_message);
+//    free(public_key_bin);
 }
 
 int main(int argc, char *argv[]) {
@@ -796,23 +916,24 @@ int main(int argc, char *argv[]) {
 	signal(SIGINT, sigint_handler);
 	pthread_setname_np(pthread_self(), "t_main");
 
+	int i = 0;
 	while (tox_loop_running) {
 		tox_iterate(tox, NULL);
 		usleep(tox_iteration_interval(tox) * 1000);
 
-        if (global_master_comes_online == true)
-        {
-            toxProxyLog(2, "send_sync_msg");
-            send_sync_msgs(tox);
-            global_master_comes_online = false;
-        }
+		if (global_master_comes_online == true && i % 10 == 0) {
+			//toxProxyLog(2, "send_sync_msg");
+			send_sync_msgs(tox);
+			//global_master_comes_online = false;
+		}
+		i++;
 	}
 
-#ifdef TOX_HAVE_TOXUTIL
-	tox_utils_kill(tox);
-#else
-    tox_kill(tox);
-#endif
+	#ifdef TOX_HAVE_TOXUTIL
+		tox_utils_kill(tox);
+	#else
+		tox_kill(tox);
+	#endif
 
 	if (logfile) {
 		fclose(logfile);
