@@ -116,6 +116,25 @@ uint32_t tox_address_hex_size = 0; //initialized in main
 int tox_loop_running = 1;
 bool masterIsOnline = false;
 
+#define USE_SEPARATE_SAVEDATA_FILE
+
+void openLogFile() {
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	struct tm tm = *localtime(&tv.tv_sec);
+
+// gcc parameter -DUNIQLOGFILE for logging to standardout = console
+#ifdef UNIQLOGFILE
+	char uniq_log_filename[strlen("ToxProxy_0000-00-00_0000-00,000000.log") + 1];
+	snprintf(uniq_log_filename, sizeof(uniq_log_filename), "ToxProxy_%04d-%02d-%02d_%02d%02d-%02d,%06ld.log", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour,
+			tm.tm_min, tm.tm_sec, tv.tv_usec);
+	logfile = fopen(uniq_log_filename, "wb");
+#else
+	logfile = fopen(log_filename, "wb");
+#endif
+
+	setvbuf(logfile, NULL, _IONBF, 0);
+}
 
 void toxProxyLog(int level, const char *msg, ...) {
 	struct timeval tv;
@@ -170,6 +189,10 @@ void toxProxyLog(int level, const char *msg, ...) {
 	}
 }
 
+void tox_log_cb__custom(Tox *tox, TOX_LOG_LEVEL level, const char *file, uint32_t line, const char *func, const char *message, void *user_data) {
+	toxProxyLog(9, "ToxCore LogMsg: [%d] %s:%d - %s:%s", (int) level, file, (int) line, func, message);
+}
+
 time_t get_unix_time(void) {
 	return time(NULL);
 }
@@ -179,10 +202,6 @@ void usleep_usec(uint64_t usec) {
 	ts.tv_sec = usec / 1000000;
 	ts.tv_nsec = (usec % 1000000) * 1000;
 	nanosleep(&ts, NULL);
-}
-
-void tox_log_cb__custom(Tox *tox, TOX_LOG_LEVEL level, const char *file, uint32_t line, const char *func, const char *message, void *user_data) {
-	toxProxyLog(9, "%d:%s:%d:%s:%s", (int) level, file, (int) line, func, message);
 }
 
 void bin2upHex(const uint8_t *bin, uint32_t bin_size, char *hex, uint32_t hex_size) {
@@ -268,14 +287,16 @@ void on_offline()
 
 void killSwitch() {
 	toxProxyLog(2, "got killSwitch command, deleting all data");
+#ifdef USE_SEPARATE_SAVEDATA_FILE
 	unlink(savedata_filename);
+#endif
 	unlink(masterFile);
 	toxProxyLog(1, "todo implement deleting messages");
 	tox_loop_running = 0;
 	exit(0);
 }
 
-Tox* create_tox() {
+Tox* openTox() {
 	Tox *tox = NULL;
 
 	struct Tox_Options options;
@@ -293,14 +314,16 @@ Tox* create_tox() {
 	// set our own handler for c-toxcore logging messages!!
 	options.log_callback = tox_log_cb__custom;
 
+	uint8_t *savedata = NULL;
+
+#ifdef USE_SEPARATE_SAVEDATA_FILE
 	FILE *f = fopen(savedata_filename, "rb");
 	if (f) {
 		fseek(f, 0, SEEK_END);
 		long fsize = ftell(f);
 		fseek(f, 0, SEEK_SET);
 
-		uint8_t *savedata = malloc(fsize);
-
+		savedata = malloc(fsize);
 		size_t ret = fread(savedata, fsize, 1, f);
 		// TODO: handle ret return vlaue here!
 		if (ret) {
@@ -311,22 +334,19 @@ Tox* create_tox() {
 		options.savedata_type = TOX_SAVEDATA_TYPE_TOX_SAVE;
 		options.savedata_data = savedata;
 		options.savedata_length = fsize;
-
-#ifdef TOX_HAVE_TOXUTIL
-		tox = tox_utils_new(&options, NULL);
-#else
-        tox = tox_new(&options, NULL);
-#endif
-
-		free(savedata);
-	} else {
-#ifdef TOX_HAVE_TOXUTIL
-		tox = tox_utils_new(&options, NULL);
-#else
-        tox = tox_new(&options, NULL);
-#endif
 	}
+#else
+	// connect to database
+	// execute select
+#endif
 
+#ifdef TOX_HAVE_TOXUTIL
+	tox = tox_utils_new(&options, NULL);
+#else
+	tox = tox_new(&options, NULL);
+#endif
+
+	free(savedata);
 	return tox;
 }
 
@@ -337,14 +357,15 @@ void sigint_handler(int signo) {
 	}
 }
 
+#ifndef USE_SEPARATE_SAVEDATA_FILE
 void sqlite_createSaveDataTable(sqlite3* db) {
 	char *zErrMsg = 0;
 	int rc;
 
 	const char *sql_SaveData_CreateTable = \
 	"CREATE TABLE ToxCoreSaveData(" \
-	"ID INT PRIMARY KEY     NOT NULL," \
-	"DATA           BLOB    NOT NULL );";
+	"id INT PRIMARY KEY     NOT NULL," \
+	"data           BLOB    NOT NULL );";
 
 	rc = sqlite3_exec(db, sql_SaveData_CreateTable, NULL, 0, &zErrMsg);
 
@@ -362,10 +383,10 @@ void db_store_savdata(sqlite3* db, uint8_t* savedata, size_t size, bool firsttim
 
 	char* sql;
 	if(firsttime) {
-		sql = "INSERT INTO ToxCoreSaveData(ID, DATA) VALUES(1, ?)";
+		sql = "INSERT INTO ToxCoreSaveData(id, data) VALUES(1, ?)";
 	}
 	else {
-		sql = "UPDATE ToxCoreSaveData SET DATA = ?";
+		sql = "UPDATE ToxCoreSaveData SET data = ?";
 	}
 
 	sqlite3_stmt *stmt = NULL;
@@ -400,23 +421,20 @@ static int select_savedata_count_callback(void* data, int argc, char **argv, cha
 	}
 	return 0;
 }
+#endif
 
-void update_savedata_file(const Tox *tox) {
+void updateToxSavedata(const Tox *tox) {
 	size_t size = tox_get_savedata_size(tox);
 	uint8_t* savedata = malloc(size);
 	tox_get_savedata(tox, savedata);
 
+#ifdef USE_SEPARATE_SAVEDATA_FILE
 	FILE *f = fopen(savedata_tmp_filename, "wb");
 	fwrite(savedata, size, 1, f);
 	fclose(f);
 
 	rename(savedata_tmp_filename, savedata_filename);
-
-
-	// below is an incomplete sqlite replacement of filebased version above.
-	// can delete above when implementation of sqlite version is complete
-	// (also in other related functions) or delete below if sqlite implementation is canceled.
-
+#else
 	sqlite3* db;
 	int rc;
 	char *zErrMsg = 0;
@@ -427,7 +445,7 @@ void update_savedata_file(const Tox *tox) {
 		toxProxyLog(0, "Can't open database: %s", sqlite3_errmsg(db));
 		return;
 	} else {
-		toxProxyLog(2, "Opened database successfully");
+		toxProxyLog(9, "Opened database successfully");
 	}
 
 	/* Create SQL statement */
@@ -453,9 +471,10 @@ void update_savedata_file(const Tox *tox) {
 	} else {
 		toxProxyLog(2, "Operation done successfully");
 	}
+	sqlite3_close(db);
+#endif
 
 	free(savedata);
-	sqlite3_close(db);
 }
 
 void shuffle(int *array, size_t n)
@@ -827,7 +846,7 @@ void friend_request_cb(Tox *tox, const uint8_t *public_key, const uint8_t *messa
 	writeMessage(public_key_hex, message, length);
 
 	tox_friend_add_norequest(tox, public_key, NULL);
-	update_savedata_file(tox);
+	updateToxSavedata(tox);
 
 	friends = tox_self_get_friend_list_size(tox);
 	toxProxyLog(2, "Added friend: %s. Number of total friends: %zu", public_key_hex, friends);
@@ -933,7 +952,7 @@ void friend_message_v2_cb(Tox *tox, uint32_t friend_number, const uint8_t *raw_m
 				uint8_t public_key_bin[tox_public_key_size()];
 				hex_string_to_bin(pubKey, tox_public_key_size() * 2, (char*) public_key_bin, tox_public_key_size());
 				tox_friend_add_norequest(tox, public_key_bin, NULL);
-				update_savedata_file(tox);
+				updateToxSavedata(tox);
 			}
 			else if (strlen((char*) message_text) == strlen("DELETE_EVERYTHING") && strncmp((char*) message_text, "DELETE_EVERYTHING", strlen("DELETE_EVERYTHING"))) {
 				killSwitch();
@@ -974,31 +993,13 @@ void friend_lossless_packet_cb(Tox *tox, uint32_t friend_number, const uint8_t *
 		}
 		const uint8_t *public_key = data + 1;
 		tox_friend_add_norequest(tox, public_key, NULL);
-		update_savedata_file(tox);
+		updateToxSavedata(tox);
 		char public_key_hex[tox_public_key_hex_size];
 			bin2upHex(public_key, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
 		toxProxyLog(0, "added friend of my master (norequest) with pubkey: %s", public_key_hex);
 	} else {
 		toxProxyLog(0, "received unexpected ControlProxyMessageType");
 	}
-}
-
-void openLogFile() {
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	struct tm tm = *localtime(&tv.tv_sec);
-
-// gcc parameter -DUNIQLOGFILE for logging to standardout = console
-#ifdef UNIQLOGFILE
-	char uniq_log_filename[strlen("ToxProxy_0000-00-00_0000-00,000000.log") + 1];
-	snprintf(uniq_log_filename, sizeof(uniq_log_filename), "ToxProxy_%04d-%02d-%02d_%02d%02d-%02d,%06ld.log", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour,
-			tm.tm_min, tm.tm_sec, tv.tv_usec);
-	logfile = fopen(uniq_log_filename, "wb");
-#else
-	logfile = fopen(log_filename, "wb");
-#endif
-
-	setvbuf(logfile, NULL, _IONBF, 0);
 }
 
 void send_sync_msg_single(Tox *tox, char *pubKeyHex, char *msgFileName) {
@@ -1109,7 +1110,7 @@ int main(int argc, char *argv[]) {
 
 	on_start();
 
-	Tox *tox = create_tox();
+	Tox *tox = openTox();
 
     print_tox_id(tox);
 
@@ -1155,7 +1156,7 @@ int main(int argc, char *argv[]) {
 
 	tox_callback_friend_lossless_packet(tox, friend_lossless_packet_cb);
 
-	update_savedata_file(tox);
+	updateToxSavedata(tox);
 
 
 	long long unsigned int cur_time = time(NULL);
