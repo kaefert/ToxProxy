@@ -81,7 +81,7 @@ typedef struct DHT_node {
 	unsigned char key_bin[TOX_PUBLIC_KEY_SIZE];
 } DHT_node;
 
-#define CURRENT_LOG_LEVEL 9 // 0 -> error, 1 -> warn, 2 -> info, 9 -> debug
+#define CURRENT_LOG_LEVEL 999 // 0 -> error, 1 -> warn, 2 -> info, 9 -> debug
 #define c_sleep(x) usleep_usec(1000*x)
 #define CLEAR(x) memset(&(x), 0, sizeof(x))
 
@@ -337,7 +337,7 @@ void sigint_handler(int signo) {
 	}
 }
 
-void sqlite_createSaveDataTable(sqlite3 *db) {
+void sqlite_createSaveDataTable(sqlite3* db) {
 	char *zErrMsg = 0;
 	int rc;
 
@@ -355,6 +355,10 @@ void sqlite_createSaveDataTable(sqlite3 *db) {
 		toxProxyLog(2, "Table created successfully");
 	}
 	sqlite3_close(db);
+}
+
+void db_insert_savdata_firsttime(sqlite3* db) {
+
 }
 
 static int select_savedata_count_callback(void *data, int argc, char **argv, char **azColName) {
@@ -378,7 +382,6 @@ void update_savedata_file(const Tox *tox) {
 
 	rename(savedata_tmp_filename, savedata_filename);
 
-	free(savedata);
 
 	// below is an incomplete sqlite replacement of filebased version above.
 	// can delete above when implementation of sqlite version is complete
@@ -404,8 +407,8 @@ void update_savedata_file(const Tox *tox) {
 	rc = sqlite3_exec(db, sql, select_savedata_count_callback, NULL, &zErrMsg);
 
 	if (rc != SQLITE_OK) {
-		if(strcmp("sqlite_createSaveDataTable", zErrMsg) == 0) {
-			sqlite_createSaveDataTable(&db);
+		if(strcmp("no such table: ToxCoreSaveData", zErrMsg) == 0) {
+			sqlite_createSaveDataTable(db);
 		}
 		else {
 			toxProxyLog(0, "SQL error: %s", zErrMsg);
@@ -415,6 +418,7 @@ void update_savedata_file(const Tox *tox) {
 		toxProxyLog(2, "Operation done successfully");
 	}
 
+	free(savedata);
 	sqlite3_close(db);
 }
 
