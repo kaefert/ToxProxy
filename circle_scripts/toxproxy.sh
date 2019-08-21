@@ -104,7 +104,7 @@ $_INST_/lib/libavcodec.a \
 $_INST_/lib/libavutil.a \
 $_INST_/lib/libsodium.a \
 -lm \
--ld \
+-ldl \
 -lpthread \
 -o ToxProxy
 
