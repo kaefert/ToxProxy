@@ -25,7 +25,7 @@ Zoff sagt: wichtig: erste relay message am 20.08.2019 um 20:31 gesendet und rich
 #define _GNU_SOURCE
 
 // db included version not working yet.
-#define USE_SEPARATE_SAVEDATA_FILE
+//#define USE_SEPARATE_SAVEDATA_FILE
 
 #include <ctype.h>
 #include <stdio.h>
@@ -302,65 +302,6 @@ void killSwitch() {
 	exit(0);
 }
 
-Tox* openTox() {
-	Tox *tox = NULL;
-
-	struct Tox_Options options;
-
-	tox_options_default(&options);
-
-	// ----- set options ------
-	options.ipv6_enabled = true;
-	options.local_discovery_enabled = true;
-	options.hole_punching_enabled = true;
-	options.udp_enabled = true;
-	options.tcp_port = 0; // disable tcp relay function!
-	// ----- set options ------
-
-	// set our own handler for c-toxcore logging messages!!
-	options.log_callback = tox_log_cb__custom;
-
-	uint8_t *savedata = NULL;
-	size_t savedataSize = 0;
-
-#ifdef USE_SEPARATE_SAVEDATA_FILE
-	FILE *f = fopen(savedata_filename, "rb");
-	if (f) {
-		fseek(f, 0, SEEK_END);
-		savedataSize = ftell(f);
-		fseek(f, 0, SEEK_SET);
-
-		savedata = malloc(savedataSize);
-		size_t ret = fread(savedata, savedataSize, 1, f);
-		// TODO: handle ret return vlaue here!
-		if (ret) {
-			// ------
-		}
-		fclose(f);
-
-		options.savedata_type = TOX_SAVEDATA_TYPE_TOX_SAVE;
-		options.savedata_data = savedata;
-		options.savedata_length = savedataSize;
-	}
-#else
-	dbSelectSavedataCount(false, savedata, &savedataSize);
-	if(savedataSize != 0) {
-		options.savedata_type = TOX_SAVEDATA_TYPE_TOX_SAVE;
-		options.savedata_data = savedata;
-		options.savedata_length = savedataSize;
-	}
-#endif
-
-#ifdef TOX_HAVE_TOXUTIL
-	tox = tox_utils_new(&options, NULL);
-#else
-	tox = tox_new(&options, NULL);
-#endif
-
-	free(savedata);
-	return tox;
-}
-
 void sigint_handler(int signo) {
 	if (signo == SIGINT) {
 		printf("received SIGINT, pid=%d\n", getpid());
@@ -389,11 +330,11 @@ void sqlite_createSaveDataTable(sqlite3* db) {
 	sqlite3_close(db);
 }
 
-void db_load_savedata(sqlite3* db, uint8_t* savedata, size_t* size) {
-
+void db_load_savedata(sqlite3* db, uint8_t** savedata, size_t* size) {
+	//TODO FIXME implement loading data from database!
 }
 
-void db_store_savdata(sqlite3* db, uint8_t* savedata, size_t* size, bool firsttime) {
+void db_store_savdata(sqlite3* db, uint8_t** savedata, size_t* size, bool firsttime) {
 	int rc;
 
 	char* sql;
@@ -411,7 +352,7 @@ void db_store_savdata(sqlite3* db, uint8_t* savedata, size_t* size, bool firstti
 	} else {
 		// SQLITE_STATIC because the statement is finalized
 		// before the buffer is freed:
-		rc = sqlite3_bind_blob(stmt, 1, savedata, *size, SQLITE_STATIC);
+		rc = sqlite3_bind_blob(stmt, 1, *savedata, *size, SQLITE_STATIC);
 		if (rc != SQLITE_OK) {
 			toxProxyLog(0, "sqlite3 insert savedata - bind failed: %s", sqlite3_errmsg(db));
 		} else {
@@ -424,11 +365,10 @@ void db_store_savdata(sqlite3* db, uint8_t* savedata, size_t* size, bool firstti
 	sqlite3_finalize(stmt);
 }
 
-
 typedef struct SavedataCallbackData {
 	sqlite3* db;
 	bool putData;
-	uint8_t* savedata;
+	uint8_t** savedata;
 	size_t* savedataSize;
 } SavedataCallbackData;
 
@@ -441,7 +381,7 @@ static int select_savedata_count_callback(void* data, int argc, char **argv, cha
 		db_store_savdata(sdcd->db, sdcd->savedata, sdcd->savedataSize, (argv[0] == NULL || strncmp("0", argv[0], 1) == 0));
 	}
 	else if (argv[0] != NULL && strncmp("0", argv[0], 1) != 0) {
-		db_load_savdata(sdcd->db, sdcd->savedata, sdcd->savedataSize);
+		db_load_savedata(sdcd->db, sdcd->savedata, sdcd->savedataSize);
 	}
 
 	for (i = 0; i < argc; i++) {
@@ -450,7 +390,7 @@ static int select_savedata_count_callback(void* data, int argc, char **argv, cha
 	return 0;
 }
 
-void dbSelectSavedataCount(bool putData, uint8_t* savedata, size_t* savedataSize) {
+void dbSelectSavedataCount(bool putData, uint8_t** savedata, size_t* savedataSize) {
 	sqlite3 *db;
 	int rc;
 	char *zErrMsg = 0;
@@ -496,11 +436,71 @@ void updateToxSavedata(const Tox *tox) {
 
 	rename(savedata_tmp_filename, savedata_filename);
 #else
-	dbSelectSavedataCount(true, savedata, &size);
+	dbSelectSavedataCount(true, &savedata, &size);
 #endif
 
 	free(savedata);
 }
+
+Tox* openTox() {
+	Tox *tox = NULL;
+
+	struct Tox_Options options;
+
+	tox_options_default(&options);
+
+	// ----- set options ------
+	options.ipv6_enabled = true;
+	options.local_discovery_enabled = true;
+	options.hole_punching_enabled = true;
+	options.udp_enabled = true;
+	options.tcp_port = 0; // disable tcp relay function!
+	// ----- set options ------
+
+	// set our own handler for c-toxcore logging messages!!
+	options.log_callback = tox_log_cb__custom;
+
+	uint8_t **savedata = NULL;
+	size_t *savedataSize = 0;
+
+#ifdef USE_SEPARATE_SAVEDATA_FILE
+	FILE *f = fopen(savedata_filename, "rb");
+	if (f) {
+		fseek(f, 0, SEEK_END);
+		*savedataSize = ftell(f);
+		fseek(f, 0, SEEK_SET);
+
+		*savedata = malloc(*savedataSize);
+		size_t ret = fread(*savedata, *savedataSize, 1, f);
+		// TODO: handle ret return vlaue here!
+		if (ret) {
+			// ------
+		}
+		fclose(f);
+
+		options.savedata_type = TOX_SAVEDATA_TYPE_TOX_SAVE;
+		options.savedata_data = *savedata;
+		options.savedata_length = *savedataSize;
+	}
+#else
+	dbSelectSavedataCount(false, savedata, savedataSize);
+	if(*savedataSize != 0) {
+		options.savedata_type = TOX_SAVEDATA_TYPE_TOX_SAVE;
+		options.savedata_data = *savedata;
+		options.savedata_length = *savedataSize;
+	}
+#endif
+
+#ifdef TOX_HAVE_TOXUTIL
+	tox = tox_utils_new(&options, NULL);
+#else
+	tox = tox_new(&options, NULL);
+#endif
+
+	free(*savedata);
+	return tox;
+}
+
 
 void shuffle(int *array, size_t n)
 {
