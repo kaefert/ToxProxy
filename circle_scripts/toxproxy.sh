@@ -78,10 +78,12 @@ $_INST_/lib/libx264.a \
 $_INST_/lib/libavcodec.a \
 $_INST_/lib/libavutil.a \
 $_INST_/lib/libsodium.a \
-$_INST_/lib/sqlite3.a \
+-lsqlite3
 -lm \
 -lpthread \
 -o ToxProxy
+
+# $_INST_/lib/sqlite3.a \
 
 ls -hal ToxProxy
 file ToxProxy
