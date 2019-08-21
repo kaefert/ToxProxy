@@ -159,6 +159,12 @@ export CXXFLAGS=" $CF2 $CF3 "
 make -j$(nproc) || exit 1
 make install
 
+cd $_SRC_
+wget -O sqlite-amalgamation.zip https://www.sqlite.org/2019/sqlite-amalgamation-3290000.zip
+unzip -j sqlite-amalgamation.zip -d sqlite-amalgamation
+cd sqlite-amalgamation
+gcc shell.c sqlite3.c -lpthread -ldl -o $_INST_/lib/sqlite3.a
+
 else
   echo "option: *CACHE*"
 fi
