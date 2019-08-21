@@ -165,7 +165,7 @@ apt install -y --no-install-recommends unzip
 unzip -j sqlite-amalgamation.zip -d sqlite-amalgamation
 cd sqlite-amalgamation
 gcc shell.c sqlite3.c -lpthread -ldl -o $_INST_/lib/sqlite3.a
-cp sqlite3.h $_INST_/include/
+cp *.h $_INST_/include/
 echo "built sqllite3, result:"
 ls -alih $_INST_/lib/sqlite3.a
 
