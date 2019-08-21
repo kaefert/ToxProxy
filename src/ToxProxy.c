@@ -25,7 +25,7 @@ Zoff sagt: wichtig: erste relay message am 20.08.2019 um 20:31 gesendet und rich
 #define _GNU_SOURCE
 
 // db included version not working yet.
-//#define USE_SEPARATE_SAVEDATA_FILE
+#define USE_SEPARATE_SAVEDATA_FILE
 
 #include <ctype.h>
 #include <stdio.h>
@@ -330,8 +330,34 @@ void sqlite_createSaveDataTable(sqlite3* db) {
 	sqlite3_close(db);
 }
 
-void db_load_savedata(sqlite3* db, uint8_t** savedata, size_t* size) {
-	//TODO FIXME implement loading data from database!
+typedef struct SavedataCallbackData {
+	sqlite3* db;
+	bool putData;
+	uint8_t** savedata;
+	size_t* savedataSize;
+} SavedataCallbackData;
+
+void db_load_savedata(SavedataCallbackData* sdcd) {
+	char* sql = "SELECT data FROM ToxCoreSaveData";
+    sqlite3_stmt *pStmt;
+    int rc = sqlite3_prepare_v2(sdcd->db, sql, -1, &pStmt, 0);
+	if (rc != SQLITE_OK) {
+		toxProxyLog(0, "sqlite3 select savedata prepare failed: %s", sqlite3_errmsg(sdcd->db));
+		//TODO FIXME set savadata to some constant for which we can check afterwards to signal that no tox savedata exists (stop waiting for callback to finish)!
+		return;
+	}
+    rc = sqlite3_step(pStmt);
+    if (rc == SQLITE_ROW) {
+    	int size = sqlite3_column_bytes(pStmt, 0);
+    	sdcd->savedataSize = (size_t*) &size; size;
+    	sdcd->savedata = sqlite3_column_blob(pStmt, 0);
+    }
+
+	//char *zErrMsg = 0;
+	//int rc = sqlite3_exec(sdcd->db, sql, select_savedata_callback, (void*) &sdcd, &zErrMsg);
+	if (rc != SQLITE_OK) {
+		toxProxyLog(0, "sqlite3 select savedata failed: %s", sqlite3_errmsg(sdcd->db));
+	}
 }
 
 void db_store_savdata(sqlite3* db, uint8_t** savedata, size_t* size, bool firsttime) {
@@ -365,23 +391,19 @@ void db_store_savdata(sqlite3* db, uint8_t** savedata, size_t* size, bool firstt
 	sqlite3_finalize(stmt);
 }
 
-typedef struct SavedataCallbackData {
-	sqlite3* db;
-	bool putData;
-	uint8_t** savedata;
-	size_t* savedataSize;
-} SavedataCallbackData;
-
 static int select_savedata_count_callback(void* data, int argc, char **argv, char **azColName) {
 	int i;
-	toxProxyLog(9, "select_callback called.");
+	toxProxyLog(9, "select_savedata_count_callback called.");
 
 	SavedataCallbackData* sdcd = (SavedataCallbackData *) data;
 	if(sdcd->putData) {
 		db_store_savdata(sdcd->db, sdcd->savedata, sdcd->savedataSize, (argv[0] == NULL || strncmp("0", argv[0], 1) == 0));
 	}
 	else if (argv[0] != NULL && strncmp("0", argv[0], 1) != 0) {
-		db_load_savedata(sdcd->db, sdcd->savedata, sdcd->savedataSize);
+		db_load_savedata(sdcd);
+	}
+	else {
+		//TODO FIXME set savadata to some constant for which we can check afterwards to signal that no tox savedata exists (stop waiting for callback to finish)!
 	}
 
 	for (i = 0; i < argc; i++) {
@@ -412,6 +434,8 @@ void dbSelectSavedataCount(bool putData, uint8_t** savedata, size_t* savedataSiz
 			if(putData) {
 				sqlite_createSaveDataTable(db);
 				db_store_savdata(db, savedata, savedataSize, true);
+			} else {
+				//TODO FIXME set savadata to some constant for which we can check afterwards to signal that no tox savedata exists (stop waiting for callback to finish)!
 			}
 		} else {
 			toxProxyLog(0, "SQL error: %s", zErrMsg);
