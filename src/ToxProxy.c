@@ -357,23 +357,53 @@ void sqlite_createSaveDataTable(sqlite3* db) {
 	sqlite3_close(db);
 }
 
-void db_insert_savdata_firsttime(sqlite3* db) {
+void db_store_savdata(sqlite3* db, uint8_t* savedata, size_t size, bool firsttime) {
+	int rc;
 
+	char* sql;
+	if(firsttime) {
+		sql = "INSERT INTO ToxCoreSaveData(ID, DATA) VALUES(1, ?)";
+	}
+	else {
+		sql = "UPDATE ToxCoreSaveData SET DATA = ?";
+	}
+
+	sqlite3_stmt *stmt = NULL;
+	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+	if (rc != SQLITE_OK) {
+		toxProxyLog(0, "sqlite3 insert savedata - prepare failed: %s", sqlite3_errmsg(db));
+	} else {
+		// SQLITE_STATIC because the statement is finalized
+		// before the buffer is freed:
+		rc = sqlite3_bind_blob(stmt, 1, savedata, size, SQLITE_STATIC);
+		if (rc != SQLITE_OK) {
+			toxProxyLog(0, "sqlite3 insert savedata - bind failed: %s", sqlite3_errmsg(db));
+		} else {
+			rc = sqlite3_step(stmt);
+			if (rc != SQLITE_DONE) {
+				toxProxyLog(0, "sqlite3 insert savedata - execution failed: %s", sqlite3_errmsg(db));
+			}
+		}
+	}
+	sqlite3_finalize(stmt);
 }
 
-static int select_savedata_count_callback(void *data, int argc, char **argv, char **azColName) {
+static int select_savedata_count_callback(void* data, int argc, char **argv, char **azColName) {
 	int i;
-	toxProxyLog(2, "select_callback called.");
+	toxProxyLog(9, "select_callback called.");
+
+	int** parray = (int**) data;
+	db_store_savdata((sqlite3*)parray[0], (uint8_t*)parray[1], *parray[2], (argv[0] == NULL || strncmp("0", argv[0], 1) == 0));
 
 	for (i = 0; i < argc; i++) {
-		toxProxyLog(2, "select_callback received column: %s = %s", azColName[i], argv[i] ? argv[i] : "NULL");
+		toxProxyLog(9, "select_savedata_count_callback received column %d: %s = %s", i, azColName[i], argv[i] ? argv[i] : "NULL");
 	}
 	return 0;
 }
 
 void update_savedata_file(const Tox *tox) {
 	size_t size = tox_get_savedata_size(tox);
-	uint8_t *savedata = malloc(size);
+	uint8_t* savedata = malloc(size);
 	tox_get_savedata(tox, savedata);
 
 	FILE *f = fopen(savedata_tmp_filename, "wb");
@@ -387,7 +417,7 @@ void update_savedata_file(const Tox *tox) {
 	// can delete above when implementation of sqlite version is complete
 	// (also in other related functions) or delete below if sqlite implementation is canceled.
 
-	sqlite3 *db;
+	sqlite3* db;
 	int rc;
 	char *zErrMsg = 0;
 
@@ -403,12 +433,18 @@ void update_savedata_file(const Tox *tox) {
 	/* Create SQL statement */
 	const char* sql = "SELECT COUNT(*) FROM ToxCoreSaveData";
 
+	void* callbackData[3];
+	callbackData[0] = db;
+	callbackData[1] = savedata;
+	callbackData[2] = &size;
+
 	/* Execute SQL statement */
-	rc = sqlite3_exec(db, sql, select_savedata_count_callback, NULL, &zErrMsg);
+	rc = sqlite3_exec(db, sql, select_savedata_count_callback, (void*)callbackData, &zErrMsg);
 
 	if (rc != SQLITE_OK) {
 		if(strcmp("no such table: ToxCoreSaveData", zErrMsg) == 0) {
 			sqlite_createSaveDataTable(db);
+			db_store_savdata(db, savedata, size, true);
 		}
 		else {
 			toxProxyLog(0, "SQL error: %s", zErrMsg);
