@@ -50,6 +50,30 @@ export LDFLAGS=" $LDFLAGS_ -fPIC "
 
 
 
+# -------------- sqlite ----------------------
+cd /root/work/
+
+if [ 1 == 1 ]; then
+    # sqlite amalgamation
+    wget 'https://www.sqlite.org/2019/sqlite-amalgamation-3290000.zip' -O sqlite_amal.zip
+    echo 'a0eba79e5d1627946aead47e100a8a6f9f6fafff  sqlite_amal.zip' > sqlite_amal.zip.sha1
+    sha1sum -c sqlite_amal.zip.sha1
+    shasum_ok=$?
+
+    if [ $shasum_ok -ne 0 ]; then
+        echo "sqlite-amalgamation source checksum error"
+        exit 1
+    else
+        echo "sqlite-amalgamation source checksum OK"
+    fi
+
+    unzip -o sqlite_amal.zip
+    cp sqlite-amalgamation-*/sqlite3.h $_INST_/include/
+    cp sqlite-amalgamation-*/sqlite3.c /root/work/src/
+fi
+# -------------- sqlite ----------------------
+
+
 # -------------- now compile toxproxy ----------------------
 
 cd /root/work/
@@ -66,9 +90,10 @@ echo "--------------"
 
 set -x
 
-export CFLAGS=" -fPIC -std=gnu99 -I$_INST_/include/ -L$_INST_/lib -O3 -g -fstack-protector-all "
+export CFLAGS=" -flto -fPIC -std=gnu99 -I$_INST_/include/ -L$_INST_/lib -O3 -g -fstack-protector-all "
 gcc $CFLAGS \
 ToxProxy.c \
+sqlite3.c \
 $_INST_/lib/libtoxcore.a \
 $_INST_/lib/libtoxav.a \
 $_INST_/lib/libtoxencryptsave.a \
@@ -79,6 +104,7 @@ $_INST_/lib/libavcodec.a \
 $_INST_/lib/libavutil.a \
 $_INST_/lib/libsodium.a \
 -lm \
+-ld \
 -lpthread \
 -o ToxProxy
 
