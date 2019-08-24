@@ -665,25 +665,34 @@ void add_master(const char *public_key_hex)
 
 bool is_master(const char *public_key_hex)
 {
+    toxProxyLog(2, "enter:is_master");
 
     if (!file_exists(masterFile)) {
+        toxProxyLog(2, "master file does not exist");
         return false;
     }
 
     FILE *f = fopen(masterFile, "rb");
+    
+    if (! f)
+    {
+        return false;
+    }
 
     fseek(f, 0, SEEK_END);
     long fsize = ftell(f);
     fseek(f, 0, SEEK_SET);
 
-    char masterPubKeyHexSaved[fsize];
+    char *masterPubKeyHexSaved = calloc(1, fsize);
 
     fread(masterPubKeyHexSaved, fsize, 1, f);
     fclose(f);
 
     if (strncmp(masterPubKeyHexSaved, public_key_hex, tox_public_key_hex_size) == 0) {
+        free(masterPubKeyHexSaved);
         return true;
     } else {
+        free(masterPubKeyHexSaved);
         return false;
     }
 }
@@ -697,9 +706,12 @@ void getPubKeyHex_friendnumber(Tox *tox, uint32_t friend_number, char *pubKeyHex
 
 bool is_master_friendnumber(Tox *tox, uint32_t friend_number)
 {
-    char pubKeyHex[tox_public_key_hex_size];
+    bool ret = false;
+    char *pubKeyHex = calloc(1, tox_public_key_hex_size);
     getPubKeyHex_friendnumber(tox, friend_number, pubKeyHex);
-    return is_master(pubKeyHex);
+    ret = is_master(pubKeyHex);
+    free(pubKeyHex);
+    return ret;
 }
 
 int hex_string_to_bin(const char *hex_string, size_t hex_len, char *output, size_t output_size)
@@ -1020,6 +1032,12 @@ int main(int argc, char *argv[])
     openLogFile();
 
     mkdir("db", 0700);
+
+    // ---- test ASAN ----
+    // char *x = (char*)malloc(10 * sizeof(char*));
+    // free(x);
+    // x[0] = 1;
+    // ---- test ASAN ----
 
     on_start();
 
