@@ -22,6 +22,7 @@ Zoff sagt: wichtig: erste relay message am 20.08.2019 um 20:31 gesendet und rich
 
  ============================================================================
  */
+
 #define _GNU_SOURCE
 
 // db included version not working yet.
@@ -62,7 +63,7 @@ Zoff sagt: wichtig: erste relay message am 20.08.2019 um 20:31 gesendet und rich
 #define TOX_HAVE_TOXUTIL 1
 
 #ifdef TOX_HAVE_TOXUTIL
-    #include <tox/toxutil.h>
+#include <tox/toxutil.h>
 #endif
 
 // timestamps for printf output
@@ -73,8 +74,10 @@ Zoff sagt: wichtig: erste relay message am 20.08.2019 um 20:31 gesendet und rich
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#ifndef USE_SEPARATE_SAVEDATA_FILE
 // https://www.tutorialspoint.com/sqlite/sqlite_c_cpp
 #include <sqlite3.h>
+#endif
 
 typedef struct DHT_node {
 	const char *ip;
@@ -533,12 +536,10 @@ void shuffle(int *array, size_t n)
     int usec = tv.tv_usec;
     srand48(usec);
 
-    if (n > 1)
-    {
+    if (n > 1) {
         size_t i;
 
-        for (i = n - 1; i > 0; i--)
-        {
+        for (i = n - 1; i > 0; i--) {
             size_t j = (unsigned int)(drand48() * (i + 1));
             int t = array[j];
             array[j] = array[i];
@@ -553,15 +554,13 @@ void bootstap_nodes(Tox *tox, DHT_node nodes[], int number_of_nodes, int add_as_
     size_t i = 0;
     int random_order_nodenums[number_of_nodes];
 
-    for (size_t j = 0; (int)j < (int)number_of_nodes; j++)
-    {
+    for (size_t j = 0; (int)j < (int)number_of_nodes; j++) {
         random_order_nodenums[j] = (int)j;
     }
 
     shuffle(random_order_nodenums, number_of_nodes);
 
-    for (size_t j = 0; (int)j < (int)number_of_nodes; j++)
-    {
+    for (size_t j = 0; (int)j < (int)number_of_nodes; j++) {
         i = (size_t)random_order_nodenums[j];
         res = sodium_hex2bin(nodes[i].key_bin, sizeof(nodes[i].key_bin),
                              nodes[i].key_hex, sizeof(nodes[i].key_hex) - 1, NULL, NULL, NULL);
@@ -569,60 +568,37 @@ void bootstap_nodes(Tox *tox, DHT_node nodes[], int number_of_nodes, int add_as_
         TOX_ERR_BOOTSTRAP error;
         res = tox_bootstrap(tox, nodes[i].ip, nodes[i].port, nodes[i].key_bin, &error);
 
-        if (res != true)
-        {
-            if (error == TOX_ERR_BOOTSTRAP_OK)
-            {
-//            	toxProxyLog(9, "bootstrap:%s %d [FALSE]res=TOX_ERR_BOOTSTRAP_OK\n", nodes[i].ip, nodes[i].port);
+        if (res != true) {
+            if (error == TOX_ERR_BOOTSTRAP_OK) {
+//              toxProxyLog(9, "bootstrap:%s %d [FALSE]res=TOX_ERR_BOOTSTRAP_OK\n", nodes[i].ip, nodes[i].port);
+            } else if (error == TOX_ERR_BOOTSTRAP_NULL) {
+//              toxProxyLog(9, "bootstrap:%s %d [FALSE]res=TOX_ERR_BOOTSTRAP_NULL\n", nodes[i].ip, nodes[i].port);
+            } else if (error == TOX_ERR_BOOTSTRAP_BAD_HOST) {
+//              toxProxyLog(9, "bootstrap:%s %d [FALSE]res=TOX_ERR_BOOTSTRAP_BAD_HOST\n", nodes[i].ip, nodes[i].port);
+            } else if (error == TOX_ERR_BOOTSTRAP_BAD_PORT) {
+//              toxProxyLog(9, "bootstrap:%s %d [FALSE]res=TOX_ERR_BOOTSTRAP_BAD_PORT\n", nodes[i].ip, nodes[i].port);
             }
-            else if (error == TOX_ERR_BOOTSTRAP_NULL)
-            {
-//            	toxProxyLog(9, "bootstrap:%s %d [FALSE]res=TOX_ERR_BOOTSTRAP_NULL\n", nodes[i].ip, nodes[i].port);
-            }
-            else if (error == TOX_ERR_BOOTSTRAP_BAD_HOST)
-            {
-//            	toxProxyLog(9, "bootstrap:%s %d [FALSE]res=TOX_ERR_BOOTSTRAP_BAD_HOST\n", nodes[i].ip, nodes[i].port);
-            }
-            else if (error == TOX_ERR_BOOTSTRAP_BAD_PORT)
-            {
-//            	toxProxyLog(9, "bootstrap:%s %d [FALSE]res=TOX_ERR_BOOTSTRAP_BAD_PORT\n", nodes[i].ip, nodes[i].port);
-            }
-        }
-        else
-        {
-//        	toxProxyLog(9, "bootstrap:%s %d [TRUE]res=%d\n", nodes[i].ip, nodes[i].port, res);
+        } else {
+//          toxProxyLog(9, "bootstrap:%s %d [TRUE]res=%d\n", nodes[i].ip, nodes[i].port, res);
         }
 
-        if (add_as_tcp_relay == 1)
-        {
+        if (add_as_tcp_relay == 1) {
             res = tox_add_tcp_relay(tox, nodes[i].ip, nodes[i].port, nodes[i].key_bin, &error); // use also as TCP relay
 
-            if (res != true)
-            {
-                if (error == TOX_ERR_BOOTSTRAP_OK)
-                {
-//                	toxProxyLog(9, "add_tcp_relay:%s %d [FALSE]res=TOX_ERR_BOOTSTRAP_OK\n", nodes[i].ip, nodes[i].port);
+            if (res != true) {
+                if (error == TOX_ERR_BOOTSTRAP_OK) {
+//                  toxProxyLog(9, "add_tcp_relay:%s %d [FALSE]res=TOX_ERR_BOOTSTRAP_OK\n", nodes[i].ip, nodes[i].port);
+                } else if (error == TOX_ERR_BOOTSTRAP_NULL) {
+//                  toxProxyLog(9, "add_tcp_relay:%s %d [FALSE]res=TOX_ERR_BOOTSTRAP_NULL\n", nodes[i].ip, nodes[i].port);
+                } else if (error == TOX_ERR_BOOTSTRAP_BAD_HOST) {
+//                  toxProxyLog(9, "add_tcp_relay:%s %d [FALSE]res=TOX_ERR_BOOTSTRAP_BAD_HOST\n", nodes[i].ip, nodes[i].port);
+                } else if (error == TOX_ERR_BOOTSTRAP_BAD_PORT) {
+//                  toxProxyLog(9, "add_tcp_relay:%s %d [FALSE]res=TOX_ERR_BOOTSTRAP_BAD_PORT\n", nodes[i].ip, nodes[i].port);
                 }
-                else if (error == TOX_ERR_BOOTSTRAP_NULL)
-                {
-//                	toxProxyLog(9, "add_tcp_relay:%s %d [FALSE]res=TOX_ERR_BOOTSTRAP_NULL\n", nodes[i].ip, nodes[i].port);
-                }
-                else if (error == TOX_ERR_BOOTSTRAP_BAD_HOST)
-                {
-//                	toxProxyLog(9, "add_tcp_relay:%s %d [FALSE]res=TOX_ERR_BOOTSTRAP_BAD_HOST\n", nodes[i].ip, nodes[i].port);
-                }
-                else if (error == TOX_ERR_BOOTSTRAP_BAD_PORT)
-                {
-//                	toxProxyLog(9, "add_tcp_relay:%s %d [FALSE]res=TOX_ERR_BOOTSTRAP_BAD_PORT\n", nodes[i].ip, nodes[i].port);
-                }
+            } else {
+//              toxProxyLog(9, "add_tcp_relay:%s %d [TRUE]res=%d\n", nodes[i].ip, nodes[i].port, res);
             }
-            else
-            {
-//            	toxProxyLog(9, "add_tcp_relay:%s %d [TRUE]res=%d\n", nodes[i].ip, nodes[i].port, res);
-            }
-        }
-        else
-        {
+        } else {
 //            toxProxyLog(2, "Not adding any TCP relays\n");
         }
     }
@@ -631,8 +607,7 @@ void bootstap_nodes(Tox *tox, DHT_node nodes[], int number_of_nodes, int add_as_
 void bootstrap(Tox *tox)
 {
     // these nodes seem to be faster!!
-    DHT_node nodes1[] =
-    {
+    DHT_node nodes1[] = {
         {"178.62.250.138",             33445, "788236D34978D1D5BD822F0A5BEBD2C53C64CC31CD3149350EE27D4D9A2F9B6B", {0}},
         {"51.15.37.145",             33445, "6FC41E2BD381D37E9748FC0E0328CE086AF9598BECC8FEB7DDF2E440475F300E", {0}},
         {"130.133.110.14",             33445, "461FA3776EF0FA655F1A05477DF1B3B614F7D6B124F7DB1DD4FE3C08B03B640F", {0}},
@@ -645,8 +620,7 @@ void bootstrap(Tox *tox)
         {"198.46.138.44",               33445, "F404ABAA1C99A9D37D61AB54898F56793E1DEF8BD46B1038B9D822E8460FAB67", {0}}
     };
     // more nodes here, but maybe some issues
-    DHT_node nodes2[] =
-    {
+    DHT_node nodes2[] = {
         {"178.62.250.138",             33445, "788236D34978D1D5BD822F0A5BEBD2C53C64CC31CD3149350EE27D4D9A2F9B6B", {0}},
         {"136.243.141.187",             443,  "6EE1FADE9F55CC7938234CC07C864081FC606D8FE7B751EDA217F268F1078A39", {0}},
         {"185.14.30.213",               443,  "2555763C8C460495B14157D234DD56B86300A2395554BCAE4621AC345B8C1B1B", {0}},
@@ -713,10 +687,9 @@ void bootstrap(Tox *tox)
         toxProxyLog(9, "nodeslist:3");
         bootstap_nodes(tox, nodes3, (int)(sizeof(nodes3) / sizeof(DHT_node)), 0);
     }
-    else // (switch_nodelist_2 == 1)
-    {
-        toxProxyLog(9, "nodeslist:2");
-        bootstap_nodes(tox, nodes2, (int)(sizeof(nodes2) / sizeof(DHT_node)), 1);
+    else // (switch_nodelist_2 == 1) {
+	toxProxyLog(9, "nodeslist:2");
+	bootstap_nodes(tox, nodes2, (int)(sizeof(nodes2) / sizeof(DHT_node)), 1);
     }
 
 #pragma GCC diagnostic pop
@@ -790,8 +763,7 @@ void get_my_toxid(Tox *tox, char *toxid_str)
     char tox_id_hex_local[TOX_ADDRESS_SIZE * 2 + 1];
     sodium_bin2hex(tox_id_hex_local, sizeof(tox_id_hex_local), tox_id_bin, sizeof(tox_id_bin));
 
-    for (size_t i = 0; i < sizeof(tox_id_hex_local) - 1; i ++)
-    {
+    for (size_t i = 0; i < sizeof(tox_id_hex_local) - 1; i ++) {
         tox_id_hex_local[i] = toupper(tox_id_hex_local[i]);
     }
 
@@ -806,8 +778,7 @@ void print_tox_id(Tox *tox)
     // write ToxID to toxid text file -----------
     FILE *fp = fopen(my_toxid_filename_txt, "wb");
 
-    if (fp)
-    {
+    if (fp) {
         fprintf(fp, "%s", tox_id_hex);
         fclose(fp);
     }
@@ -817,8 +788,7 @@ void print_tox_id(Tox *tox)
 
 void add_master(const char *public_key_hex) {
 
-    if (file_exists(masterFile))
-    {
+    if (file_exists(masterFile)) {
         toxProxyLog(2, "I already have a *MASTER*");
         return;
     }
@@ -830,26 +800,33 @@ void add_master(const char *public_key_hex) {
 }
 
 bool is_master(const char *public_key_hex) {
+	toxProxyLog(2, "enter:is_master");
 
-    if (!file_exists(masterFile))
-    {
-        return false;
-    }
+	if (!file_exists(masterFile)) {
+		toxProxyLog(2, "master file does not exist");
+		return false;
+	}
 
 	FILE *f = fopen(masterFile, "rb");
+
+	if (! f) {
+		return false;
+	}
 
 	fseek(f, 0, SEEK_END);
 	long fsize = ftell(f);
 	fseek(f, 0, SEEK_SET);
 
-	char masterPubKeyHexSaved[fsize];
+	char *masterPubKeyHexSaved = calloc(1, fsize);
 
 	fread(masterPubKeyHexSaved, fsize, 1, f);
 	fclose(f);
 
 	if (strncmp(masterPubKeyHexSaved, public_key_hex, tox_public_key_hex_size) == 0) {
+		free(masterPubKeyHexSaved);
 		return true;
 	} else {
+		free(masterPubKeyHexSaved);
 		return false;
 	}
 }
@@ -861,9 +838,12 @@ void getPubKeyHex_friendnumber(Tox *tox, uint32_t friend_number, char *pubKeyHex
 }
 
 bool is_master_friendnumber(Tox *tox, uint32_t friend_number) {
-	char pubKeyHex[tox_public_key_hex_size];
+	bool ret = false;
+	char *pubKeyHex = calloc(1, tox_public_key_hex_size);
 	getPubKeyHex_friendnumber(tox, friend_number, pubKeyHex);
-	return is_master(pubKeyHex);
+	ret = is_master(pubKeyHex);
+	free(pubKeyHex);
+	return ret;
 }
 
 int hex_string_to_bin(const char *hex_string, size_t hex_len, char *output, size_t output_size) {
@@ -1057,6 +1037,7 @@ void send_sync_msg_single(Tox *tox, char *pubKeyHex, char *msgFileName) {
 	sprintf(msgPath , "%s/%s/%s",msgsDir,pubKeyHex,msgFileName);
 
 	FILE *f = fopen(msgPath, "rb");
+
 	if (f) {
 		fseek(f, 0, SEEK_END);
 		long fsize = ftell(f);
@@ -1065,32 +1046,34 @@ void send_sync_msg_single(Tox *tox, char *pubKeyHex, char *msgFileName) {
 		uint8_t *rawMsgData = malloc(fsize);
 
 		size_t ret = fread(rawMsgData, fsize, 1, f);
+
 		// TODO: handle ret return vlaue here!
 		if (ret) {
 			// ------
 		}
+
 		fclose(f);
 
 
-	    uint32_t rawMsgSize2 = tox_messagev2_size(fsize, TOX_FILE_KIND_MESSAGEV2_SYNC, 0);
-	    uint8_t *raw_message2 = calloc(1, rawMsgSize2);
-	    uint8_t *msgid2 = calloc(1, TOX_PUBLIC_KEY_SIZE);
-	    uint8_t* pubKeyBin = hex_string_to_bin2(pubKeyHex);
+		uint32_t rawMsgSize2 = tox_messagev2_size(fsize, TOX_FILE_KIND_MESSAGEV2_SYNC, 0);
+		uint8_t *raw_message2 = calloc(1, rawMsgSize2);
+		uint8_t *msgid2 = calloc(1, TOX_PUBLIC_KEY_SIZE);
+		uint8_t* pubKeyBin = hex_string_to_bin2(pubKeyHex);
 
-	    tox_messagev2_sync_wrap(fsize, pubKeyBin, TOX_FILE_KIND_MESSAGEV2_SEND,
-	    		rawMsgData, 123, 456, raw_message2, msgid2);
-	    toxProxyLog(9, "wrapped raw message = %p", raw_message2);
+		tox_messagev2_sync_wrap(fsize, pubKeyBin, TOX_FILE_KIND_MESSAGEV2_SEND,
+			rawMsgData, 123, 456, raw_message2, msgid2);
+		toxProxyLog(9, "wrapped raw message = %p", raw_message2);
 
-	    TOX_ERR_FRIEND_SEND_MESSAGE error;
-	    bool res2 = tox_util_friend_send_sync_message_v2(tox, 0, raw_message2, rawMsgSize2, &error);
-	    toxProxyLog(9, "send_sync_msg res=%d; error=%d", (int)res2, error);
+		TOX_ERR_FRIEND_SEND_MESSAGE error;
+		bool res2 = tox_util_friend_send_sync_message_v2(tox, 0, raw_message2, rawMsgSize2, &error);
+		toxProxyLog(9, "send_sync_msg res=%d; error=%d", (int)res2, error);
 
-	    free(rawMsgData);
-	    free(raw_message2);
-	    free(pubKeyBin);
-	    free(msgid2);
+		free(rawMsgData);
+		free(raw_message2);
+		free(pubKeyBin);
+		free(msgid2);
 
-	    unlink(msgPath);
+		unlink(msgPath);
 	}
 }
 
@@ -1157,6 +1140,12 @@ int main(int argc, char *argv[]) {
 
 	mkdir("db", 0700);
 
+	// ---- test ASAN ----
+	// char *x = (char*)malloc(10 * sizeof(char*));
+	// free(x);
+	// x[0] = 1;
+	// ---- test ASAN ----
+
 	on_start();
 
 	Tox *tox = openTox();
@@ -1211,7 +1200,9 @@ int main(int argc, char *argv[]) {
 	long long unsigned int cur_time = time(NULL);
 	long long loop_counter = 0;
 	int max_tries = 2;
+
 	int try = 0;
+
 	uint8_t off = 1;
 
 	while (1) {
@@ -1250,6 +1241,7 @@ int main(int argc, char *argv[]) {
 	pthread_setname_np(pthread_self(), "t_main");
 
 	int i = 0;
+
 	while (tox_loop_running) {
 		tox_iterate(tox, NULL);
 		usleep(tox_iteration_interval(tox) * 1000);

@@ -27,7 +27,7 @@ jobs:
             pkg-config
             zip grep file ca-certificates autotools-dev autoconf automake
             git bc wget rsync cmake make pkg-config libtool
-            ssh gzip tar
+            ssh gzip tar unzip
             coreutils
       - checkout
       #- restore_cache:
