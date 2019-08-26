@@ -1,6 +1,9 @@
 /Debug/
-/messages/
+/messages*/
 ToxProxy_SaveData*.tox
 ToxProxy*.log
 ToxProxyMasterPubKey*.txt
 ToxProxy_ToxID.txt
+ToxProxy*.db
+/db/
+toxid*.txt
