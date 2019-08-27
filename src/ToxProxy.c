@@ -25,8 +25,11 @@ Zoff sagt: wichtig: erste relay message am 20.08.2019 um 20:31 gesendet und rich
 
 #define _GNU_SOURCE
 
-// db included version not working yet.
-#define USE_SEPARATE_SAVEDATA_FILE
+// define this to use savedata file instead of included in sqlite
+// #define USE_SEPARATE_SAVEDATA_FILE
+
+// define this to write my own tox id to a text file
+// #define WRITE_MY_TOXID_TO_FILE
 
 #include <ctype.h>
 #include <stdio.h>
@@ -111,7 +114,10 @@ const char *savedata_tmp_filename = "./db/savedata.tox.tmp";
 const char *empty_log_message = "empty log message received!";
 const char *msgsDir = "./messages";
 const char *masterFile = "./db/toxproxymasterpubkey.txt";
+
+#ifdef WRITE_MY_TOXID_TO_FILE
 const char *my_toxid_filename_txt = "toxid.txt";
+#endif
 
 const char *shell_cmd__onstart = "./scripts/on_start.sh 2> /dev/null";
 const char *shell_cmd__ononline = "./scripts/on_online.sh 2> /dev/null";
@@ -156,7 +162,8 @@ void toxProxyLog(int level, const char *msg, ...) {
 	}
 
 	// 2019-08-03 17:01:04.440494 --> 4+1+2+1+2+1+2+1+2+1+2+1+6 = 26 ; [I] --> 5 ; + msg + \n
-	char buffer[26 + 5 + strlen(msg) + 1]; // = "0000-00-00 00:00:00.000000 [_] msg\n" -- removed extra trailing \0\0.
+	// char buffer[26 + 5 + strlen(msg) + 1]; // = "0000-00-00 00:00:00.000000 [_] msg\n" -- removed extra trailing \0\0.
+	char *buffer = calloc(1, 26 + 5 + strlen(msg) + 2);
 	sprintf(buffer, "%04d-%02d-%02d %02d:%02d:%02d.%06ld", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
 	strcat(buffer, " [_] ");
 
@@ -196,6 +203,7 @@ void toxProxyLog(int level, const char *msg, ...) {
 			va_end(ap);
 		}
 	}
+	free(buffer);
 }
 
 void tox_log_cb__custom(Tox *tox, TOX_LOG_LEVEL level, const char *file, uint32_t line, const char *func, const char *message, void *user_data) {
@@ -336,8 +344,8 @@ void sqlite_createSaveDataTable(sqlite3* db) {
 typedef struct SavedataCallbackData {
 	sqlite3* db;
 	bool putData;
-	uint8_t** savedata;
-	size_t* savedataSize;
+	uint8_t* savedata;
+	size_t savedataSize;
 } SavedataCallbackData;
 
 void db_load_savedata(SavedataCallbackData* sdcd) {
@@ -351,8 +359,7 @@ void db_load_savedata(SavedataCallbackData* sdcd) {
 	}
     rc = sqlite3_step(pStmt);
     if (rc == SQLITE_ROW) {
-    	int size = sqlite3_column_bytes(pStmt, 0);
-    	sdcd->savedataSize = (size_t*) &size; size;
+    	sdcd->savedataSize = sqlite3_column_bytes(pStmt, 0);
     	sdcd->savedata = sqlite3_column_blob(pStmt, 0);
     }
 
@@ -363,7 +370,7 @@ void db_load_savedata(SavedataCallbackData* sdcd) {
 	}
 }
 
-void db_store_savdata(sqlite3* db, uint8_t** savedata, size_t* size, bool firsttime) {
+void db_store_savdata(sqlite3* db, uint8_t* savedata, size_t size, bool firsttime) {
 	int rc;
 
 	char* sql;
@@ -381,7 +388,7 @@ void db_store_savdata(sqlite3* db, uint8_t** savedata, size_t* size, bool firstt
 	} else {
 		// SQLITE_STATIC because the statement is finalized
 		// before the buffer is freed:
-		rc = sqlite3_bind_blob(stmt, 1, *savedata, *size, SQLITE_STATIC);
+		rc = sqlite3_bind_blob(stmt, 1, savedata, size, SQLITE_STATIC);
 		if (rc != SQLITE_OK) {
 			toxProxyLog(0, "sqlite3 insert savedata - bind failed: %s", sqlite3_errmsg(db));
 		} else {
@@ -402,7 +409,7 @@ static int select_savedata_count_callback(void* data, int argc, char **argv, cha
 	if(sdcd->putData) {
 		db_store_savdata(sdcd->db, sdcd->savedata, sdcd->savedataSize, (argv[0] == NULL || strncmp("0", argv[0], 1) == 0));
 	}
-	else if (argv[0] != NULL && strncmp("0", argv[0], 1) != 0) {
+	else if (argv[0] != NULL && strncmp("1", argv[0], 1) == 0) {
 		db_load_savedata(sdcd);
 	}
 	else {
@@ -415,7 +422,7 @@ static int select_savedata_count_callback(void* data, int argc, char **argv, cha
 	return 0;
 }
 
-void dbSelectSavedataCount(bool putData, uint8_t** savedata, size_t* savedataSize) {
+SavedataCallbackData dbSelectSavedataCount(bool putData, uint8_t* savedata, size_t savedataSize) {
 	sqlite3 *db;
 	int rc;
 	char *zErrMsg = 0;
@@ -447,7 +454,10 @@ void dbSelectSavedataCount(bool putData, uint8_t** savedata, size_t* savedataSiz
 	} else {
 		toxProxyLog(2, "Operation done successfully");
 	}
-	sqlite3_close(db);
+	if(putData) {
+		sqlite3_close(db);
+	}
+	return sdcd;
 }
 #endif
 
@@ -463,7 +473,7 @@ void updateToxSavedata(const Tox *tox) {
 
 	rename(savedata_tmp_filename, savedata_filename);
 #else
-	dbSelectSavedataCount(true, &savedata, &size);
+	dbSelectSavedataCount(true, savedata, size);
 #endif
 
 	free(savedata);
@@ -487,18 +497,15 @@ Tox* openTox() {
 	// set our own handler for c-toxcore logging messages!!
 	options.log_callback = tox_log_cb__custom;
 
-	uint8_t **savedata = NULL;
-	size_t *savedataSize = 0;
-
 #ifdef USE_SEPARATE_SAVEDATA_FILE
 	FILE *f = fopen(savedata_filename, "rb");
 	if (f) {
 		fseek(f, 0, SEEK_END);
-		*savedataSize = ftell(f);
+		size_t savedataSize = ftell(f);
 		fseek(f, 0, SEEK_SET);
 
-		*savedata = malloc(*savedataSize);
-		size_t ret = fread(*savedata, *savedataSize, 1, f);
+		uint8_t* savedata = malloc(savedataSize);
+		size_t ret = fread(savedata, savedataSize, 1, f);
 		// TODO: handle ret return vlaue here!
 		if (ret) {
 			// ------
@@ -506,15 +513,15 @@ Tox* openTox() {
 		fclose(f);
 
 		options.savedata_type = TOX_SAVEDATA_TYPE_TOX_SAVE;
-		options.savedata_data = *savedata;
-		options.savedata_length = *savedataSize;
+		options.savedata_data = savedata;
+		options.savedata_length = savedataSize;
 	}
 #else
-	dbSelectSavedataCount(false, savedata, savedataSize);
-	if(*savedataSize != 0) {
+	SavedataCallbackData sdcd = dbSelectSavedataCount(false, NULL, 0);
+	if(sdcd.savedataSize != 0) {
 		options.savedata_type = TOX_SAVEDATA_TYPE_TOX_SAVE;
-		options.savedata_data = *savedata;
-		options.savedata_length = *savedataSize;
+		options.savedata_data = sdcd.savedata;
+		options.savedata_length = sdcd.savedataSize;
 	}
 #endif
 
@@ -524,7 +531,11 @@ Tox* openTox() {
 	tox = tox_new(&options, NULL);
 #endif
 
-	free(*savedata);
+#ifdef USE_SEPARATE_SAVEDATA_FILE
+	free(savedata);
+#else
+	sqlite3_close(sdcd.db);
+#endif
 	return tox;
 }
 
@@ -695,18 +706,6 @@ void bootstrap(Tox *tox)
 #pragma GCC diagnostic pop
 }
 
-void print_startup_message(Tox *tox) {
-	uint8_t tox_id_bin[tox_address_size()];
-	tox_self_get_address(tox, tox_id_bin);
-	char tox_id_hex[tox_address_hex_size];
-	bin2upHex(tox_id_bin, tox_address_size(), tox_id_hex, tox_address_hex_size);
-
-	size_t friends = tox_self_get_friend_list_size(tox);
-	toxProxyLog(9, "ToxProxy startup completed");
-	toxProxyLog(9, "My Tox ID = %s", tox_id_hex);
-	toxProxyLog(9, "Number of friends = %ld", (long) friends);
-}
-
 void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length) {
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
@@ -768,22 +767,6 @@ void get_my_toxid(Tox *tox, char *toxid_str)
     }
 
     snprintf(toxid_str, (size_t)(TOX_ADDRESS_SIZE * 2 + 1), "%s", (const char *)tox_id_hex_local);
-}
-
-void print_tox_id(Tox *tox)
-{
-    char tox_id_hex[TOX_ADDRESS_SIZE * 2 + 1];
-    get_my_toxid(tox, tox_id_hex);
-
-    // write ToxID to toxid text file -----------
-    FILE *fp = fopen(my_toxid_filename_txt, "wb");
-
-    if (fp) {
-        fprintf(fp, "%s", tox_id_hex);
-        fclose(fp);
-    }
-
-    // write ToxID to toxid text file -----------
 }
 
 void add_master(const char *public_key_hex) {
@@ -1150,8 +1133,6 @@ int main(int argc, char *argv[]) {
 
 	Tox *tox = openTox();
 
-    print_tox_id(tox);
-
 	tox_public_key_hex_size = tox_public_key_size() * 2 + 1;
 	tox_address_hex_size = tox_address_size() * 2 + 1;
 
@@ -1163,7 +1144,24 @@ int main(int argc, char *argv[]) {
 
 	bootstrap(tox);
 
-	print_startup_message(tox);
+	uint8_t tox_id_bin[tox_address_size()];
+	tox_self_get_address(tox, tox_id_bin);
+	char tox_id_hex[tox_address_hex_size];
+	bin2upHex(tox_id_bin, tox_address_size(), tox_id_hex, tox_address_hex_size);
+
+#ifdef WRITE_MY_TOXID_TO_FILE
+    FILE *fp = fopen(my_toxid_filename_txt, "wb");
+
+    if (fp) {
+        fprintf(fp, "%s", tox_id_hex);
+        fclose(fp);
+    }
+#endif
+
+	size_t friends = tox_self_get_friend_list_size(tox);
+	toxProxyLog(9, "ToxProxy startup completed");
+	toxProxyLog(9, "My Tox ID = %s", tox_id_hex);
+	toxProxyLog(9, "Number of friends = %ld", (long) friends);
 
 	tox_callback_friend_request(tox, friend_request_cb);
 	tox_callback_friend_message(tox, friend_message_cb);
