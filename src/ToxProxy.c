@@ -687,11 +687,11 @@ void bootstrap(Tox *tox)
         toxProxyLog(9, "nodeslist:3");
         bootstap_nodes(tox, nodes3, (int)(sizeof(nodes3) / sizeof(DHT_node)), 0);
     }
-    else // (switch_nodelist_2 == 1) {
-	toxProxyLog(9, "nodeslist:2");
-	bootstap_nodes(tox, nodes2, (int)(sizeof(nodes2) / sizeof(DHT_node)), 1);
+    else {
+    	// (switch_nodelist_2 == 1)
+    	toxProxyLog(9, "nodeslist:2");
+    	bootstap_nodes(tox, nodes2, (int)(sizeof(nodes2) / sizeof(DHT_node)), 1);
     }
-
 #pragma GCC diagnostic pop
 }
 
