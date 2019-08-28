@@ -1020,7 +1020,8 @@ void friend_lossless_packet_cb(Tox *tox, uint32_t friend_number, const uint8_t *
 
 void send_sync_msg_single(Tox *tox, char *pubKeyHex, char *msgFileName) {
 
-	char msgPath[strlen(msgsDir) + 1 + strlen(pubKeyHex) + 1 + strlen(msgFileName)];
+	char* msgPath = calloc(1, strlen(msgsDir) + 1 + strlen(pubKeyHex) + 1 + strlen(msgFileName) + 1);
+	 // last +1 is for terminating \0 I guess (without it, memory checker explodes..)
 	sprintf(msgPath , "%s/%s/%s",msgsDir,pubKeyHex,msgFileName);
 
 	FILE *f = fopen(msgPath, "rb");
@@ -1061,6 +1062,7 @@ void send_sync_msg_single(Tox *tox, char *pubKeyHex, char *msgFileName) {
 		free(msgid2);
 
 		unlink(msgPath);
+		free(msgPath);
 	}
 }
 
