@@ -732,13 +732,14 @@ void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length) {
 	char timestamp[strlen("0000-00-00_0000-00,000000") + 1]; // = "0000-00-00_0000-00,000000";
 	snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02d_%02d%02d-%02d,%06ld", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
 
-	char msgPath[sizeof(userDir) + 1 + sizeof(timestamp) + 4];
+	char* msgPath = calloc(1, sizeof(userDir) + 1 + sizeof(timestamp) + 4);
 	strcpy(msgPath, userDir);
 	strcat(msgPath, "/");
 	strcat(msgPath, timestamp);
 	strcat(msgPath, ".txt");
 
 	FILE *f = fopen(msgPath, "wb");
+	free(msgPath);
 	fwrite(message, length, 1, f);
 	fclose(f);
 }
@@ -1062,8 +1063,8 @@ void send_sync_msg_single(Tox *tox, char *pubKeyHex, char *msgFileName) {
 		free(msgid2);
 
 		unlink(msgPath);
-		free(msgPath);
 	}
+	free(msgPath);
 }
 
 void send_sync_msgs_of_friend(Tox *tox, char *pubKeyHex) {
@@ -1076,6 +1077,7 @@ void send_sync_msgs_of_friend(Tox *tox, char *pubKeyHex) {
 
 	if ((dfd = opendir(friendDir)) == NULL) {
 		toxProxyLog(1, "Can't open msgsDir for sending messages to master (maybe no single message has been received yet?)");
+		free(friendDir);
 		return;
 	}
 
