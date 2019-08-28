@@ -140,8 +140,9 @@ void openLogFile() {
 
 // gcc parameter -DUNIQLOGFILE for logging to standardout = console
 #ifdef UNIQLOGFILE
-	char uniq_log_filename[strlen("ToxProxy_0000-00-00_0000-00,000000.log") + 1];
-	snprintf(uniq_log_filename, sizeof(uniq_log_filename), "ToxProxy_%04d-%02d-%02d_%02d%02d-%02d,%06ld.log", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour,
+	int length = 39; // = length of "ToxProxy_0000-00-00_0000-00,000000.log" + 1 for \0 terminator
+	char *uniq_log_filename = calloc(1,length);
+	snprintf(uniq_log_filename, length, "ToxProxy_%04d-%02d-%02d_%02d%02d-%02d,%06ld.log", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour,
 			tm.tm_min, tm.tm_sec, tv.tv_usec);
 	logfile = fopen(uniq_log_filename, "wb");
 #else
@@ -149,6 +150,7 @@ void openLogFile() {
 #endif
 
 	setvbuf(logfile, NULL, _IONBF, 0);
+	free(uniq_log_filename);
 }
 
 void toxProxyLog(int level, const char *msg, ...) {
@@ -322,73 +324,115 @@ void sigint_handler(int signo) {
 
 #ifndef USE_SEPARATE_SAVEDATA_FILE
 void sqlite_createSaveDataTable(sqlite3* db) {
-	char *zErrMsg = 0;
-	int rc;
 
-	const char *sql_SaveData_CreateTable = \
+	const char *sql = \
 	"CREATE TABLE ToxCoreSaveData(" \
 	"id INT PRIMARY KEY     NOT NULL," \
 	"data           BLOB    NOT NULL );";
 
-	rc = sqlite3_exec(db, sql_SaveData_CreateTable, NULL, 0, &zErrMsg);
-
+	sqlite3_stmt *stmt;
+	int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
 	if (rc != SQLITE_OK) {
-		toxProxyLog(0, "SQL error: %s", zErrMsg);
-		sqlite3_free(zErrMsg);
-	} else {
-		toxProxyLog(2, "Table created successfully");
+		toxProxyLog(0, "sqlite_createSaveDataTable - Failed to prepare create tbl stmt: %s", sqlite3_errmsg(db));
+		sqlite3_close(db);
+		exit(1);
 	}
-	sqlite3_close(db);
+
+	rc = sqlite3_step(stmt);
+	toxProxyLog(9, "sqlite_createSaveDataTable rc of step = %d", rc);
+	rc = sqlite3_finalize(stmt);
+	toxProxyLog(9, "sqlite_createSaveDataTable rc of finalize = %d", rc);
 }
 
-typedef struct SavedataCallbackData {
-	sqlite3* db;
-	bool putData;
+
+typedef struct SizedSavedata {
 	uint8_t* savedata;
 	size_t savedataSize;
-} SavedataCallbackData;
+	sqlite3* db;
+	sqlite3_stmt* stmt;
+} SizedSavedata;
 
-void db_load_savedata(SavedataCallbackData* sdcd) {
-	char* sql = "SELECT data FROM ToxCoreSaveData";
-    sqlite3_stmt *pStmt;
-    int rc = sqlite3_prepare_v2(sdcd->db, sql, -1, &pStmt, 0);
+SizedSavedata dbSavedataAction(bool putData, uint8_t* savedata, size_t savedataSize) {
+	sqlite3 *db;
+	sqlite3_stmt *stmt;
+	char* sql = "SELECT COUNT(*) FROM ToxCoreSaveData";
+	int rowCount = -1;
+
+	int rc = sqlite3_open(database_filename, &db);
 	if (rc != SQLITE_OK) {
-		toxProxyLog(0, "sqlite3 select savedata prepare failed: %s", sqlite3_errmsg(sdcd->db));
-		//TODO FIXME set savadata to some constant for which we can check afterwards to signal that no tox savedata exists (stop waiting for callback to finish)!
-		return;
+		toxProxyLog(0, "dbSavedataAction - Cannot open database: %s", sqlite3_errmsg(db));
+		sqlite3_close(db);
+		exit(1);
 	}
-    rc = sqlite3_step(pStmt);
-    if (rc == SQLITE_ROW) {
-    	sdcd->savedataSize = sqlite3_column_bytes(pStmt, 0);
-    	sdcd->savedata = sqlite3_column_blob(pStmt, 0);
-    }
+	sqlite3_busy_timeout(db, 2000);
 
-	//char *zErrMsg = 0;
-	//int rc = sqlite3_exec(sdcd->db, sql, select_savedata_callback, (void*) &sdcd, &zErrMsg);
+	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
 	if (rc != SQLITE_OK) {
-		toxProxyLog(0, "sqlite3 select savedata failed: %s", sqlite3_errmsg(sdcd->db));
+		const char* errorMsg = sqlite3_errmsg(db);
+		if(strncmp("no such table: ToxCoreSaveData", errorMsg, 30) == 0) {
+			toxProxyLog(1, "dbSavedataAction - savedata table doesn't exist (first run?), create if it data insertion is planned!");
+			sqlite_createSaveDataTable(db);
+			rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
+			if (rc != SQLITE_OK) {
+				toxProxyLog(0, "dbSavedataAction - Failed to prepare row count data stmt even after creating table. errormsg: %s", sqlite3_errmsg(db));
+				sqlite3_close(db);
+				exit(1);
+			}
+		}
+		else {
+			toxProxyLog(0, "dbSavedataAction - Failed to prepare row count data stmt: %s", errorMsg);
+			sqlite3_close(db);
+			exit(1);
+		}
+
 	}
-}
 
-void db_store_savdata(sqlite3* db, uint8_t* savedata, size_t size, bool firsttime) {
-	int rc;
-
-	char* sql;
-	if(firsttime) {
-		sql = "INSERT INTO ToxCoreSaveData(id, data) VALUES(1, ?)";
+	rc = sqlite3_step(stmt);
+	if (rc == SQLITE_ROW) {
+		rowCount = sqlite3_column_int(stmt, 0);
+		toxProxyLog(9, "dbSavedataAction received count result: %d", rowCount); //, sqlite3_column_text(stmt, 0));
 	}
 	else {
-		sql = "UPDATE ToxCoreSaveData SET data = ?";
+		toxProxyLog(0, "dbSavedataAction received something different than a count result. rc = %d, error = %s", rc, sqlite3_errmsg(db));
+		exit(1);
+	}
+	rc = sqlite3_finalize(stmt);
+	toxProxyLog(9, "dbSavedataAction rc of rowcount stmt finalize = %d", rc);
+
+	if(!(rowCount == 0 || rowCount == 1)) {
+		toxProxyLog(0, "dbSavedataAction failed because rowCount is unexpected: %d", rowCount);
+		sqlite3_close(db);
+		exit(1);
 	}
 
-	sqlite3_stmt *stmt = NULL;
-	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+	if(putData) {
+		if(rowCount == 0) {
+			sql = "INSERT INTO ToxCoreSaveData(id, data) VALUES(1, ?)";
+		}
+		else {
+			sql = "UPDATE ToxCoreSaveData SET data = ?";
+		}
+	}
+	else {
+		if(rowCount == 0) {
+			toxProxyLog(1, "dbSavedataAction: can't load data because savedata table is empty (first run!).");
+			sqlite3_close(db);
+			SizedSavedata empty = {NULL, 0, NULL, NULL};
+			return empty;
+		}
+		else {
+			sql = "SELECT data FROM ToxCoreSaveData";
+		}
+	}
+	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
 	if (rc != SQLITE_OK) {
-		toxProxyLog(0, "sqlite3 insert savedata - prepare failed: %s", sqlite3_errmsg(db));
-	} else {
-		// SQLITE_STATIC because the statement is finalized
-		// before the buffer is freed:
-		rc = sqlite3_bind_blob(stmt, 1, savedata, size, SQLITE_STATIC);
+		toxProxyLog(0, "dbSavedataAction - Failed to prepare savedata insert/update/select stmt: %s", sqlite3_errmsg(db));
+		sqlite3_close(db);
+		exit(1);
+	}
+
+	if(putData) {
+		rc = sqlite3_bind_blob(stmt, 1, savedata, savedataSize, SQLITE_STATIC);
 		if (rc != SQLITE_OK) {
 			toxProxyLog(0, "sqlite3 insert savedata - bind failed: %s", sqlite3_errmsg(db));
 		} else {
@@ -398,67 +442,26 @@ void db_store_savdata(sqlite3* db, uint8_t* savedata, size_t size, bool firsttim
 			}
 		}
 	}
-	sqlite3_finalize(stmt);
-}
-
-static int select_savedata_count_callback(void* data, int argc, char **argv, char **azColName) {
-	int i;
-	toxProxyLog(9, "select_savedata_count_callback called.");
-
-	SavedataCallbackData* sdcd = (SavedataCallbackData *) data;
-	if(sdcd->putData) {
-		db_store_savdata(sdcd->db, sdcd->savedata, sdcd->savedataSize, (argv[0] == NULL || strncmp("0", argv[0], 1) == 0));
-	}
-	else if (argv[0] != NULL && strncmp("1", argv[0], 1) == 0) {
-		db_load_savedata(sdcd);
-	}
 	else {
-		//TODO FIXME set savadata to some constant for which we can check afterwards to signal that no tox savedata exists (stop waiting for callback to finish)!
-	}
-
-	for (i = 0; i < argc; i++) {
-		toxProxyLog(9, "select_savedata_count_callback received column %d: %s = %s", i, azColName[i], argv[i] ? argv[i] : "NULL");
-	}
-	return 0;
-}
-
-SavedataCallbackData dbSelectSavedataCount(bool putData, uint8_t* savedata, size_t savedataSize) {
-	sqlite3 *db;
-	int rc;
-	char *zErrMsg = 0;
-	rc = sqlite3_open(database_filename, &db);
-	if (rc) {
-		toxProxyLog(0, "Can't open database: %s", sqlite3_errmsg(db));
-		exit(1);
-	} else {
-		toxProxyLog(9, "Opened database successfully");
-	}
-	/* Create SQL statement */
-	const char *sql = "SELECT COUNT(*) FROM ToxCoreSaveData";
-	SavedataCallbackData sdcd = {db, putData, savedata, savedataSize};
-	/* Execute SQL statement */
-	rc = sqlite3_exec(db, sql, select_savedata_count_callback,
-			(void*) &sdcd, &zErrMsg);
-	if (rc != SQLITE_OK) {
-		if (strcmp("no such table: ToxCoreSaveData", zErrMsg) == 0) {
-			if(putData) {
-				sqlite_createSaveDataTable(db);
-				db_store_savdata(db, savedata, savedataSize, true);
-			} else {
-				//TODO FIXME set savadata to some constant for which we can check afterwards to signal that no tox savedata exists (stop waiting for callback to finish)!
-			}
-		} else {
-			toxProxyLog(0, "SQL error: %s", zErrMsg);
+	    rc = sqlite3_step(stmt);
+	    if (rc == SQLITE_ROW) {
+	    	savedataSize = sqlite3_column_bytes(stmt, 0);
+	    	savedata = sqlite3_column_blob(stmt, 0); //gives "discards 'const' qualifier"-warning but works. maybe Zoff can suggest improvement?
+	    	SizedSavedata data = {savedata, savedataSize, db, stmt};
+	    	return data;
+	    }
+		else {
+			toxProxyLog(0, "dbSavedataAction select savedata received something different than the expected blob. rc = %d, error = %s", rc, sqlite3_errmsg(db));
+			sqlite3_close(db);
+			exit(1);
 		}
-		sqlite3_free(zErrMsg);
-	} else {
-		toxProxyLog(2, "Operation done successfully");
 	}
-	if(putData) {
-		sqlite3_close(db);
-	}
-	return sdcd;
+
+	sqlite3_close(db);
+	SizedSavedata empty = {NULL, 0, NULL, NULL};
+	return empty;
 }
+
 #endif
 
 void updateToxSavedata(const Tox *tox) {
@@ -473,7 +476,7 @@ void updateToxSavedata(const Tox *tox) {
 
 	rename(savedata_tmp_filename, savedata_filename);
 #else
-	dbSelectSavedataCount(true, savedata, size);
+	dbSavedataAction(true, savedata, size);
 #endif
 
 	free(savedata);
@@ -517,11 +520,11 @@ Tox* openTox() {
 		options.savedata_length = savedataSize;
 	}
 #else
-	SavedataCallbackData sdcd = dbSelectSavedataCount(false, NULL, 0);
-	if(sdcd.savedataSize != 0) {
+	SizedSavedata ssd = dbSavedataAction(false, NULL, 0);
+	if(ssd.savedataSize != 0) {
 		options.savedata_type = TOX_SAVEDATA_TYPE_TOX_SAVE;
-		options.savedata_data = sdcd.savedata;
-		options.savedata_length = sdcd.savedataSize;
+		options.savedata_data = ssd.savedata;
+		options.savedata_length = ssd.savedataSize;
 	}
 #endif
 
@@ -534,7 +537,8 @@ Tox* openTox() {
 #ifdef USE_SEPARATE_SAVEDATA_FILE
 	free(savedata);
 #else
-	sqlite3_close(sdcd.db);
+	sqlite3_finalize(ssd.stmt);
+	sqlite3_close(ssd.db);
 #endif
 	return tox;
 }
@@ -1120,6 +1124,8 @@ void send_sync_msgs(Tox *tox) {
 
 int main(int argc, char *argv[]) {
 	openLogFile();
+
+    toxProxyLog(2, "sqlite3 version = %s", sqlite3_libversion());
 
 	mkdir("db", 0700);
 
