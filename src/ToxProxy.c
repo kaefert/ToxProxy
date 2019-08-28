@@ -1067,7 +1067,7 @@ void send_sync_msg_single(Tox *tox, char *pubKeyHex, char *msgFileName) {
 void send_sync_msgs_of_friend(Tox *tox, char *pubKeyHex) {
 	//toxProxyLog(3, "sending messages of friend: %s to master", pubKeyHex);
 
-	char friendDir[strlen(msgsDir) + 1 + strlen(pubKeyHex)];
+	char* friendDir = calloc(1, strlen(msgsDir) + 1 + strlen(pubKeyHex) +1); // last +1 is for terminating \0 I guess (without it, memory checker explodes..)
     sprintf(friendDir , "%s/%s",msgsDir,pubKeyHex);
 
 	DIR *dfd;
@@ -1088,6 +1088,8 @@ void send_sync_msgs_of_friend(Tox *tox, char *pubKeyHex) {
 			send_sync_msg_single(tox, pubKeyHex, dp->d_name);
 		}
 	}
+
+	free(friendDir);
 }
 
 void send_sync_msgs(Tox *tox) {
