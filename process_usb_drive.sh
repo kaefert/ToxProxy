@@ -127,9 +127,9 @@ network={
         chmod og-rwx "/tmp/abc003.txt"
 
         cat "/tmp/abc001.txt" > "/tmp/abc.txt"
-        cat "$mount_dir""/""wlan_ssid.txt"|head -1|tr -d '\r'|tr -d '\n' >> "/tmp/abc.txt"
+        head -1 "$mount_dir""/""wlan_ssid.txt" | tr -d '\r' | tr -d '\n' >> "/tmp/abc.txt"
         echo -n "$wpa_conf_file_content_002" >> "/tmp/abc.txt"
-        cat "$mount_dir""/""wlan_pass.txt"|head -1|tr -d '\r'|tr -d '\n' >> "/tmp/abc.txt"
+        head -1 "$mount_dir""/""wlan_pass.txt" | tr -d '\r' | tr -d '\n' >> "/tmp/abc.txt"
         cat "/tmp/abc003.txt" >> "/tmp/abc.txt"
 
         rm -f "/tmp/abc001.txt" "/tmp/abc003.txt"
