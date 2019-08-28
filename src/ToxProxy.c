@@ -134,12 +134,12 @@ int tox_loop_running = 1;
 bool masterIsOnline = false;
 
 void openLogFile() {
+// gcc parameter -DUNIQLOGFILE for logging to standardout = console
+#ifdef UNIQLOGFILE
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	struct tm tm = *localtime(&tv.tv_sec);
 
-// gcc parameter -DUNIQLOGFILE for logging to standardout = console
-#ifdef UNIQLOGFILE
 	int length = 39; // = length of "ToxProxy_0000-00-00_0000-00,000000.log" + 1 for \0 terminator
 	char *uniq_log_filename = calloc(1,length);
 	snprintf(uniq_log_filename, length, "ToxProxy_%04d-%02d-%02d_%02d%02d-%02d,%06ld.log", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour,
