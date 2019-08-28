@@ -145,12 +145,12 @@ void openLogFile() {
 	snprintf(uniq_log_filename, length, "ToxProxy_%04d-%02d-%02d_%02d%02d-%02d,%06ld.log", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour,
 			tm.tm_min, tm.tm_sec, tv.tv_usec);
 	logfile = fopen(uniq_log_filename, "wb");
+	free(uniq_log_filename);
 #else
 	logfile = fopen(log_filename, "wb");
 #endif
 
 	setvbuf(logfile, NULL, _IONBF, 0);
-	free(uniq_log_filename);
 }
 
 void toxProxyLog(int level, const char *msg, ...) {
