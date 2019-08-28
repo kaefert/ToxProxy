@@ -565,19 +565,17 @@ void shuffle(int *array, size_t n)
 
 void bootstap_nodes(Tox *tox, DHT_node nodes[], int number_of_nodes, int add_as_tcp_relay)
 {
-    bool res = 0;
-    size_t i = 0;
     int random_order_nodenums[number_of_nodes];
-
     for (size_t j = 0; (int)j < (int)number_of_nodes; j++) {
         random_order_nodenums[j] = (int)j;
     }
 
     shuffle(random_order_nodenums, number_of_nodes);
 
+    size_t i = 0;
     for (size_t j = 0; (int)j < (int)number_of_nodes; j++) {
         i = (size_t)random_order_nodenums[j];
-        res = sodium_hex2bin(nodes[i].key_bin, sizeof(nodes[i].key_bin),
+        bool res = sodium_hex2bin(nodes[i].key_bin, sizeof(nodes[i].key_bin),
                              nodes[i].key_hex, sizeof(nodes[i].key_hex) - 1, NULL, NULL, NULL);
 //        toxProxyLog(9, "sodium_hex2bin:res=%d", res);
         TOX_ERR_BOOTSTRAP error;
@@ -711,10 +709,6 @@ void bootstrap(Tox *tox)
 }
 
 void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length) {
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	struct tm tm = *localtime(&tv.tv_sec);
-
 	uint8_t msg_id;
 	tox_messagev2_get_message_id(message, &msg_id);
 	toxProxyLog(2, "New message with id %d from %s: %s", msg_id, sender_key_hex, message);
@@ -730,6 +724,10 @@ void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length) {
 	//TODO FIXME use message v2 message id / hash instead of timestamp of receiving / processing message!
 
 	char timestamp[strlen("0000-00-00_0000-00,000000") + 1]; // = "0000-00-00_0000-00,000000";
+
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	struct tm tm = *localtime(&tv.tv_sec);
 	snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02d_%02d%02d-%02d,%06ld", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
 
 	char* msgPath = calloc(1, sizeof(userDir) + 1 + sizeof(timestamp) + 4);
