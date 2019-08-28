@@ -577,7 +577,7 @@ void bootstap_nodes(Tox *tox, DHT_node nodes[], int number_of_nodes, int add_as_
         i = (size_t)random_order_nodenums[j];
         bool res = sodium_hex2bin(nodes[i].key_bin, sizeof(nodes[i].key_bin),
                              nodes[i].key_hex, sizeof(nodes[i].key_hex) - 1, NULL, NULL, NULL);
-//        toxProxyLog(9, "sodium_hex2bin:res=%d", res);
+        toxProxyLog(99, "bootstap_nodes - sodium_hex2bin:res=%d", res);
         TOX_ERR_BOOTSTRAP error;
         res = tox_bootstrap(tox, nodes[i].ip, nodes[i].port, nodes[i].key_bin, &error);
 
