@@ -1141,7 +1141,7 @@ void send_sync_msgs(Tox *tox) {
 int main(int argc, char *argv[]) {
 	openLogFile();
 
-    toxProxyLog(2, "sqlite3 version = %s", sqlite3_libversion());
+//	toxProxyLog(2, "sqlite3 version = %s", sqlite3_libversion());
 
 	mkdir("db", 0700);
 
