@@ -26,7 +26,7 @@ Zoff sagt: wichtig: erste relay message am 20.08.2019 um 20:31 gesendet und rich
 #define _GNU_SOURCE
 
 // define this to use savedata file instead of included in sqlite
-// #define USE_SEPARATE_SAVEDATA_FILE
+#define USE_SEPARATE_SAVEDATA_FILE
 
 // define this to write my own tox id to a text file
 // #define WRITE_MY_TOXID_TO_FILE
@@ -89,7 +89,7 @@ typedef struct DHT_node {
 	unsigned char key_bin[TOX_PUBLIC_KEY_SIZE];
 } DHT_node;
 
-#define CURRENT_LOG_LEVEL 999 // 0 -> error, 1 -> warn, 2 -> info, 9 -> debug
+#define CURRENT_LOG_LEVEL 50 // 0 -> error, 1 -> warn, 2 -> info, 9 -> debug
 #define c_sleep(x) usleep_usec(1000*x)
 #define CLEAR(x) memset(&(x), 0, sizeof(x))
 
@@ -323,12 +323,21 @@ void sigint_handler(int signo) {
 }
 
 #ifndef USE_SEPARATE_SAVEDATA_FILE
+void dbInsertMsg() {
+	sqlite3 *db;
+	sqlite3_stmt *stmt;
+	char* sql = \
+	"CREATE TABLE IF NOT EXISTS Messages(" \
+	"id INTEGER PRIMARY KEY AUTOINCREMENT," \
+	"rawMsg BLOB NOT NULL);";
+}
+
 void sqlite_createSaveDataTable(sqlite3* db) {
 
 	const char *sql = \
 	"CREATE TABLE ToxCoreSaveData(" \
-	"id INT PRIMARY KEY     NOT NULL," \
-	"data           BLOB    NOT NULL );";
+	"id INTEGER PRIMARY KEY," \
+	"data BLOB NOT NULL);";
 
 	sqlite3_stmt *stmt;
 	int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
@@ -407,7 +416,7 @@ SizedSavedata dbSavedataAction(bool putData, uint8_t* savedata, size_t savedataS
 
 	if(putData) {
 		if(rowCount == 0) {
-			sql = "INSERT INTO ToxCoreSaveData(id, data) VALUES(1, ?)";
+			sql = "INSERT INTO ToxCoreSaveData(data) VALUES(?)";
 		}
 		else {
 			sql = "UPDATE ToxCoreSaveData SET data = ?";
@@ -502,12 +511,13 @@ Tox* openTox() {
 
 #ifdef USE_SEPARATE_SAVEDATA_FILE
 	FILE *f = fopen(savedata_filename, "rb");
+	uint8_t* savedata;
 	if (f) {
 		fseek(f, 0, SEEK_END);
 		size_t savedataSize = ftell(f);
 		fseek(f, 0, SEEK_SET);
 
-		uint8_t* savedata = malloc(savedataSize);
+		savedata = malloc(savedataSize);
 		size_t ret = fread(savedata, savedataSize, 1, f);
 		// TODO: handle ret return vlaue here!
 		if (ret) {
@@ -850,18 +860,20 @@ void friend_request_cb(Tox *tox, const uint8_t *public_key, const uint8_t *messa
 	bin2upHex(public_key, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
 
 	size_t friends = tox_self_get_friend_list_size(tox);
-
 	if (friends == 0) {
 		// add first friend as master for this proxy
 		add_master(public_key_hex);
+		tox_friend_add_norequest(tox, public_key, NULL);
+		updateToxSavedata(tox);
+	}
+	else {
+		// once I have a master, I don't add friend's on request, only by command of my master!
 	}
 
 	toxProxyLog(2, "Got currently %zu friends. New friend request from %s with message: %s", friends, public_key_hex, message);
 
 	writeMessage(public_key_hex, message, length);
 
-	tox_friend_add_norequest(tox, public_key, NULL);
-	updateToxSavedata(tox);
 
 	friends = tox_self_get_friend_list_size(tox);
 	toxProxyLog(2, "Added friend: %s. Number of total friends: %zu", public_key_hex, friends);
