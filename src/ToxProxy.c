@@ -31,6 +31,12 @@ Zoff sagt: wichtig: erste relay message am 20.08.2019 um 20:31 gesendet und rich
 // define this to write my own tox id to a text file
 // #define WRITE_MY_TOXID_TO_FILE
 
+// define this to have the log statements also printed to stdout and not only into logfile
+// #define LOG2STDOUT
+
+// define this so every run creates a new (timestamped) logfile and doesn't overwrite previous logfiles.
+// #define UNIQLOGFILE
+
 #include <ctype.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -77,11 +83,6 @@ Zoff sagt: wichtig: erste relay message am 20.08.2019 um 20:31 gesendet und rich
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#ifndef USE_SEPARATE_SAVEDATA_FILE
-// https://www.tutorialspoint.com/sqlite/sqlite_c_cpp
-#include <sqlite3.h>
-#endif
-
 typedef struct DHT_node {
 	const char *ip;
 	uint16_t port;
@@ -126,8 +127,6 @@ uint32_t my_last_online_ts = 0;
 #define BOOTSTRAP_AFTER_OFFLINE_SECS 30
 TOX_CONNECTION my_connection_status = TOX_CONNECTION_NONE;
 
-const char *database_filename = "ToxProxy.db";
-
 uint32_t tox_public_key_hex_size = 0; //initialized in main
 uint32_t tox_address_hex_size = 0; //initialized in main
 int tox_loop_running = 1;
@@ -140,7 +139,7 @@ void openLogFile() {
 	gettimeofday(&tv, NULL);
 	struct tm tm = *localtime(&tv.tv_sec);
 
-	int length = 39; // = length of "ToxProxy_0000-00-00_0000-00,000000.log" + 1 for \0 terminator
+	const int length = 39; // = length of "ToxProxy_0000-00-00_0000-00,000000.log" + 1 for \0 terminator
 	char *uniq_log_filename = calloc(1,length);
 	snprintf(uniq_log_filename, length, "ToxProxy_%04d-%02d-%02d_%02d%02d-%02d,%06ld.log", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour,
 			tm.tm_min, tm.tm_sec, tv.tv_usec);
@@ -150,10 +149,10 @@ void openLogFile() {
 	logfile = fopen(log_filename, "wb");
 #endif
 
-	setvbuf(logfile, NULL, _IONBF, 0);
+	setvbuf(logfile, NULL, _IOLBF, 0); // Line buffered, (default is fully buffered) so every logline is instantly visible (and doesn't vanish in a crash situation)
 }
 
-void toxProxyLog(int level, const char *msg, ...) {
+void toxProxyLog(int level, const char* msg, ...) {
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	struct tm tm = *localtime(&tv.tv_sec);
@@ -165,9 +164,9 @@ void toxProxyLog(int level, const char *msg, ...) {
 
 	// 2019-08-03 17:01:04.440494 --> 4+1+2+1+2+1+2+1+2+1+2+1+6 = 26 ; [I] --> 5 ; + msg + \n
 	// char buffer[26 + 5 + strlen(msg) + 1]; // = "0000-00-00 00:00:00.000000 [_] msg\n" -- removed extra trailing \0\0.
-	char *buffer = calloc(1, 26 + 5 + strlen(msg) + 2);
-	sprintf(buffer, "%04d-%02d-%02d %02d:%02d:%02d.%06ld", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
-	strcat(buffer, " [_] ");
+	const size_t len = 26 + 5 + strlen(msg) + 2;
+	char *buffer = calloc(1, len);
+	snprintf(buffer, len, "%04d-%02d-%02d %02d:%02d:%02d.%06ld [_] %s\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec, msg);
 
 	switch (level) {
 	case 0:
@@ -186,8 +185,6 @@ void toxProxyLog(int level, const char *msg, ...) {
 			buffer[28] = '?';
 		break;
 	}
-	strcat(buffer, msg);
-	strcat(buffer, "\n");
 
 	if (level <= CURRENT_LOG_LEVEL) {
 		va_list ap;
@@ -322,14 +319,21 @@ void sigint_handler(int signo) {
 	}
 }
 
+
 #ifndef USE_SEPARATE_SAVEDATA_FILE
+// https://www.tutorialspoint.com/sqlite/sqlite_c_cpp
+#include <sqlite3.h>
+
+const char *database_filename = "ToxProxy.db";
+
 void dbInsertMsg() {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
 	char* sql = \
 	"CREATE TABLE IF NOT EXISTS Messages(" \
-	"id INTEGER PRIMARY KEY AUTOINCREMENT," \
-	"rawMsg BLOB NOT NULL);";
+	 "id INTEGER PRIMARY KEY AUTOINCREMENT" \
+	",received DATETIME" \
+	",rawMsg BLOB NOT NULL);";
 }
 
 void sqlite_createSaveDataTable(sqlite3* db) {
@@ -355,13 +359,13 @@ void sqlite_createSaveDataTable(sqlite3* db) {
 
 
 typedef struct SizedSavedata {
-	uint8_t* savedata;
+	const uint8_t* savedata;
 	size_t savedataSize;
 	sqlite3* db;
 	sqlite3_stmt* stmt;
 } SizedSavedata;
 
-SizedSavedata dbSavedataAction(bool putData, uint8_t* savedata, size_t savedataSize) {
+SizedSavedata dbSavedataAction(bool putData, const uint8_t* savedata, size_t savedataSize) {
 	sqlite3 *db;
 	sqlite3_stmt *stmt;
 	char* sql = "SELECT COUNT(*) FROM ToxCoreSaveData";
@@ -470,8 +474,8 @@ SizedSavedata dbSavedataAction(bool putData, uint8_t* savedata, size_t savedataS
 	SizedSavedata empty = {NULL, 0, NULL, NULL};
 	return empty;
 }
-
 #endif
+
 
 void updateToxSavedata(const Tox *tox) {
 	size_t size = tox_get_savedata_size(tox);
@@ -796,7 +800,7 @@ void add_master(const char *public_key_hex) {
 }
 
 bool is_master(const char *public_key_hex) {
-	toxProxyLog(2, "enter:is_master");
+	//toxProxyLog(2, "enter:is_master");
 
 	if (!file_exists(masterFile)) {
 		toxProxyLog(2, "master file does not exist");
@@ -1264,7 +1268,7 @@ int main(int argc, char *argv[]) {
 
 	while (tox_loop_running) {
 		tox_iterate(tox, NULL);
-		usleep(tox_iteration_interval(tox) * 1000);
+		usleep_usec(tox_iteration_interval(tox) * 1000);
 
 		if (masterIsOnline == true && i % 10 == 0) {
 			//toxProxyLog(2, "send_sync_msg");
