@@ -252,43 +252,36 @@ uint8_t *hex_string_to_bin2(const char *hex_string)
     size_t len = TOX_ADDRESS_SIZE;
     uint8_t *val = calloc(1, len);
 
-    // dbg(9, "hex_string_to_bin:len=%d\n", (int)len);
-
-    for (size_t i = 0; i != len; ++i)
-    {
-        // dbg(9, "hex_string_to_bin:%d %d\n", hex_string[2*i], hex_string[2*i+1]);
+    for (size_t i = 0; i != len; ++i) {
         val[i] = (16 * char_to_int(hex_string[2 * i])) + (char_to_int(hex_string[2 * i + 1]));
-        // dbg(9, "hex_string_to_bin:i=%d val[i]=%d\n", i, (int)val[i]);
     }
 
     return val;
 }
 
-void on_start()
-{
-    char cmd_str[1000];
-    CLEAR(cmd_str);
+void on_start() {
+    char *cmd_str = calloc(1,1000);
     snprintf(cmd_str, sizeof(cmd_str), "%s", shell_cmd__onstart);
 
     if (system(cmd_str)){};
+    free(cmd_str);
 }
 
-void on_online()
-{
-    char cmd_str[1000];
-    CLEAR(cmd_str);
+void on_online() {
+    char *cmd_str = calloc(1,1000);
     snprintf(cmd_str, sizeof(cmd_str), "%s", shell_cmd__ononline);
 
     if (system(cmd_str)){};
+    free(cmd_str);
 }
 
 void on_offline()
 {
-    char cmd_str[1000];
-    CLEAR(cmd_str);
+    char *cmd_str = calloc(1,1000);
     snprintf(cmd_str, sizeof(cmd_str), "%s", shell_cmd__onoffline);
 
     if (system(cmd_str)){};
+    free(cmd_str);
 
     // if we go offline, immediately bootstrap again. maybe we can go online faster
     // set last online timestamp into the past
@@ -479,7 +472,7 @@ SizedSavedata dbSavedataAction(bool putData, const uint8_t* savedata, size_t sav
 
 void updateToxSavedata(const Tox *tox) {
 	size_t size = tox_get_savedata_size(tox);
-	uint8_t* savedata = malloc(size);
+	uint8_t* savedata = calloc(1,size);
 	tox_get_savedata(tox, savedata);
 
 #ifdef USE_SEPARATE_SAVEDATA_FILE
