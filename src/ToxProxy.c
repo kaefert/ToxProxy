@@ -882,7 +882,10 @@ bool is_master(const char *public_key_hex)
     }
 
     char *masterPubKeyHexSaved = calloc(1, fsize);
-    fread(masterPubKeyHexSaved, fsize, 1, f);
+    size_t res = fread(masterPubKeyHexSaved, fsize, 1, f);
+
+    if (res) {};
+
     fclose(f);
 
     if (strncmp(masterPubKeyHexSaved, public_key_hex, tox_public_key_hex_size) == 0) {
