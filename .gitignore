@@ -3,3 +3,4 @@
 ToxProxy_SaveData*.tox
 ToxProxy*.log
 ToxProxyMasterPubKey*.txt
+src/ToxProxy
