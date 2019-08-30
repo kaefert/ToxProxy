@@ -261,7 +261,7 @@ uint8_t *hex_string_to_bin2(const char *hex_string)
 
 void on_start() {
     char *cmd_str = calloc(1,1000);
-    snprintf(cmd_str, sizeof(cmd_str), "%s", shell_cmd__onstart);
+    snprintf(cmd_str, 999, "%s", shell_cmd__onstart);
 
     if (system(cmd_str)){};
     free(cmd_str);
@@ -269,7 +269,7 @@ void on_start() {
 
 void on_online() {
     char *cmd_str = calloc(1,1000);
-    snprintf(cmd_str, sizeof(cmd_str), "%s", shell_cmd__ononline);
+    snprintf(cmd_str, 999, "%s", shell_cmd__ononline);
 
     if (system(cmd_str)){};
     free(cmd_str);
@@ -278,7 +278,7 @@ void on_online() {
 void on_offline()
 {
     char *cmd_str = calloc(1,1000);
-    snprintf(cmd_str, sizeof(cmd_str), "%s", shell_cmd__onoffline);
+    snprintf(cmd_str, 999, "%s", shell_cmd__onoffline);
 
     if (system(cmd_str)){};
     free(cmd_str);
@@ -716,11 +716,14 @@ void bootstrap(Tox *tox)
 }
 
 void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length) {
-	uint8_t msg_id;
-	tox_messagev2_get_message_id(message, &msg_id);
-	toxProxyLog(2, "New message with id %d from %s: %s", msg_id, sender_key_hex, message);
+
+	uint8_t *msg_id = calloc(1, tox_public_key_size());
+	tox_messagev2_get_message_id(message, msg_id);
+	toxProxyLog(2, "New message from %s", sender_key_hex);
 
 	char userDir[tox_public_key_hex_size + strlen(msgsDir) + 1];
+    CLEAR(userDir);
+
 	strcpy(userDir, msgsDir);
 	strcat(userDir, "/");
 	strcat(userDir, sender_key_hex);
@@ -731,11 +734,13 @@ void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length) {
 	//TODO FIXME use message v2 message id / hash instead of timestamp of receiving / processing message!
 
 	char timestamp[strlen("0000-00-00_0000-00,000000") + 1]; // = "0000-00-00_0000-00,000000";
+    CLEAR(timestamp);
 
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	struct tm tm = *localtime(&tv.tv_sec);
-	snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02d_%02d%02d-%02d,%06ld", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
+	snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02d_%02d%02d-%02d,%06ld",
+             tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
 
 	char* msgPath = calloc(1, sizeof(userDir) + 1 + sizeof(timestamp) + 4);
 	strcpy(msgPath, userDir);
@@ -744,15 +749,24 @@ void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length) {
 	strcat(msgPath, ".txt");
 
 	FILE *f = fopen(msgPath, "wb");
+    if (f)
+    {
+        fwrite(message, length, 1, f);
+        fclose(f);
+    }
 	free(msgPath);
-	fwrite(message, length, 1, f);
-	fclose(f);
 }
 
 void writeMessageHelper(Tox *tox, uint32_t friend_number, const uint8_t *message, size_t length) {
+
 	uint8_t public_key_bin[tox_public_key_size()];
+    CLEAR(public_key_bin);
+
 	tox_friend_get_public_key(tox, friend_number, public_key_bin, NULL);
+
 	char public_key_hex[tox_public_key_hex_size];
+    CLEAR(public_key_hex);
+
 	bin2upHex(public_key_bin, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
 	writeMessage(public_key_hex, message, length);
 }
@@ -768,8 +782,12 @@ bool file_exists(const char *path)
 void get_my_toxid(Tox *tox, char *toxid_str)
 {
     uint8_t tox_id_bin[TOX_ADDRESS_SIZE];
+    CLEAR(tox_id_bin);
+
     tox_self_get_address(tox, tox_id_bin);
     char tox_id_hex_local[TOX_ADDRESS_SIZE * 2 + 1];
+    CLEAR(tox_id_hex_local);
+
     sodium_bin2hex(tox_id_hex_local, sizeof(tox_id_hex_local), tox_id_bin, sizeof(tox_id_bin));
 
     for (size_t i = 0; i < sizeof(tox_id_hex_local) - 1; i ++) {
@@ -788,8 +806,11 @@ void add_master(const char *public_key_hex) {
 
 	toxProxyLog(2, "added master");
 	FILE *f = fopen(masterFile, "wb");
-	fwrite(public_key_hex, tox_public_key_hex_size, 1, f);
-	fclose(f);
+    if (f)
+    {
+        fwrite(public_key_hex, tox_public_key_hex_size, 1, f);
+        fclose(f);
+    }
 }
 
 bool is_master(const char *public_key_hex) {
@@ -809,9 +830,14 @@ bool is_master(const char *public_key_hex) {
 	fseek(f, 0, SEEK_END);
 	long fsize = ftell(f);
 	fseek(f, 0, SEEK_SET);
+    
+    if (fsize < 1)
+    {
+        fclose(f);
+        return false;
+    }
 
 	char *masterPubKeyHexSaved = calloc(1, fsize);
-
 	fread(masterPubKeyHexSaved, fsize, 1, f);
 	fclose(f);
 
@@ -826,6 +852,7 @@ bool is_master(const char *public_key_hex) {
 
 void getPubKeyHex_friendnumber(Tox *tox, uint32_t friend_number, char *pubKeyHex) {
 	uint8_t public_key_bin[tox_public_key_size()];
+    CLEAR(public_key_bin);
 	tox_friend_get_public_key(tox, friend_number, public_key_bin, NULL);
 	bin2upHex(public_key_bin, tox_public_key_size(), pubKeyHex, tox_public_key_hex_size);
 }
@@ -854,6 +881,7 @@ int hex_string_to_bin(const char *hex_string, size_t hex_len, char *output, size
 
 void friend_request_cb(Tox *tox, const uint8_t *public_key, const uint8_t *message, size_t length, void *user_data) {
 	char public_key_hex[tox_public_key_hex_size];
+    CLEAR(public_key_hex);
 	bin2upHex(public_key, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
 
 	size_t friends = tox_self_get_friend_list_size(tox);
@@ -865,22 +893,20 @@ void friend_request_cb(Tox *tox, const uint8_t *public_key, const uint8_t *messa
 	}
 	else {
 		// once I have a master, I don't add friend's on request, only by command of my master!
+        return;
 	}
 
-	toxProxyLog(2, "Got currently %zu friends. New friend request from %s with message: %s", friends, public_key_hex, message);
-
-	writeMessage(public_key_hex, message, length);
-
+	toxProxyLog(2, "Got currently %zu friends. New friend request from %s with message: %s",
+                friends, public_key_hex, message);
 
 	friends = tox_self_get_friend_list_size(tox);
 	toxProxyLog(2, "Added friend: %s. Number of total friends: %zu", public_key_hex, friends);
 }
 
 void friend_message_cb(Tox *tox, uint32_t friend_number, TOX_MESSAGE_TYPE type, const uint8_t *message, size_t length, void *user_data) {
+
 	char *default_msg = "YOU are using the old Message format! this is not supported!";
 	tox_friend_send_message(tox, friend_number, type, (uint8_t*) default_msg, strlen(default_msg), NULL);
-	// WARNING: Don't write v1 message because it's missing metadata that is expected. If you wan't compatibility to v1, a lot more must me changed!
-	//writeMessageHelper(tox, friend_number, message, length);
 }
 
 //
@@ -889,6 +915,7 @@ void friend_message_cb(Tox *tox, uint32_t friend_number, TOX_MESSAGE_TYPE type, 
 void send_text_message_to_friend(Tox *tox, uint32_t friend_number, const char *fmt, ...) {
 	toxProxyLog(9, "sending message to friend %d", friend_number);
 	char msg2[1000];
+    CLEAR(msg2);
 	size_t length = 0;
 
 	if (fmt == NULL) {
@@ -904,8 +931,7 @@ void send_text_message_to_friend(Tox *tox, uint32_t friend_number, const char *f
 #ifdef TOX_HAVE_TOXUTIL
 	uint32_t ts_sec = (uint32_t) get_unix_time();
 	tox_util_friend_send_message_v2(tox, friend_number, TOX_MESSAGE_TYPE_NORMAL, ts_sec, (const uint8_t*) msg2, length,
-	NULL, NULL, NULL,
-	NULL);
+	                                NULL, NULL, NULL, NULL);
 #else
     // old message format, not support by this proxy!
     tox_friend_send_message(tox, friend_number, TOX_MESSAGE_TYPE_NORMAL, (uint8_t *)msg2, length, NULL);
@@ -913,7 +939,9 @@ void send_text_message_to_friend(Tox *tox, uint32_t friend_number, const char *f
 }
 
 void friendlist_onConnectionChange(Tox *tox, uint32_t friend_number, TOX_CONNECTION connection_status, void *user_data) {
-	toxProxyLog(2, "friendlist_onConnectionChange:*READY*:friendnum=%d %d", (int) friend_number, (int) connection_status);
+
+    toxProxyLog(2, "friendlist_onConnectionChange:*READY*:friendnum=%d %d", (int) friend_number, (int) connection_status);
+
 	if (is_master_friendnumber(tox, friend_number)) {
 		if (connection_status != TOX_CONNECTION_NONE) {
 			toxProxyLog(2, "master is online, send him all cached unsent messages");
@@ -982,7 +1010,7 @@ void friend_message_v2_cb(Tox *tox, uint32_t friend_number, const uint8_t *raw_m
 				killSwitch();
 			}
 			else {
-				send_text_message_to_friend(tox, friend_number, "Sorry, but this command has not been understood, please check the implementation or contact the developer.");
+				// send_text_message_to_friend(tox, friend_number, "Sorry, but this command has not been understood, please check the implementation or contact the developer.");
 			}
 		} else {
 			// nicht vom master, also wohl ein freund vom master.
@@ -1019,7 +1047,8 @@ void friend_lossless_packet_cb(Tox *tox, uint32_t friend_number, const uint8_t *
 		tox_friend_add_norequest(tox, public_key, NULL);
 		updateToxSavedata(tox);
 		char public_key_hex[tox_public_key_hex_size];
-			bin2upHex(public_key, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
+        CLEAR(public_key_hex);
+        bin2upHex(public_key, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
 		toxProxyLog(0, "added friend of my master (norequest) with pubkey: %s", public_key_hex);
 	} else {
 		toxProxyLog(0, "received unexpected ControlProxyMessageType");
@@ -1039,8 +1068,14 @@ void send_sync_msg_single(Tox *tox, char *pubKeyHex, char *msgFileName) {
 		long fsize = ftell(f);
 		fseek(f, 0, SEEK_SET);
 
-		uint8_t *rawMsgData = malloc(fsize);
+        if (fsize < 1)
+        {
+            fclose(f);
+            free(msgPath);
+            return;
+        }
 
+		uint8_t *rawMsgData = calloc(1, fsize);
 		size_t ret = fread(rawMsgData, fsize, 1, f);
 
 		// TODO: handle ret return vlaue here!
@@ -1080,15 +1115,15 @@ void send_sync_msgs_of_friend(Tox *tox, char *pubKeyHex) {
 	char* friendDir = calloc(1, strlen(msgsDir) + 1 + strlen(pubKeyHex) +1); // last +1 is for terminating \0 I guess (without it, memory checker explodes..)
     sprintf(friendDir , "%s/%s",msgsDir,pubKeyHex);
 
-	DIR *dfd;
+	DIR *dfd = opendir(friendDir);
 
-	if ((dfd = opendir(friendDir)) == NULL) {
+	if (dfd == NULL) {
 		toxProxyLog(1, "Can't open msgsDir for sending messages to master (maybe no single message has been received yet?)");
 		free(friendDir);
 		return;
 	}
 
-	struct dirent *dp;
+	struct dirent *dp = NULL;
 
 	// char filename_qfd[260];
 	// char new_name_qfd[100];
@@ -1100,45 +1135,31 @@ void send_sync_msgs_of_friend(Tox *tox, char *pubKeyHex) {
 		}
 	}
 
+    closedir(dfd);
 	free(friendDir);
 }
 
 void send_sync_msgs(Tox *tox) {
 
 	// loop over all directories = public-keys of friends we have received messages from
-	DIR *dfd;
-	if ((dfd = opendir(msgsDir)) == NULL) {
+	DIR *dfd = opendir(msgsDir);
+	if (dfd == NULL) {
 		toxProxyLog(1, "Can't open msgsDir for sending messages to master (maybe no single message has been received yet?)");
 		return;
 	}
-	struct dirent *dp;
+
+	struct dirent *dp = NULL;
 	while ((dp = readdir(dfd)) != NULL) {
 		if(strncmp(dp->d_name, ".", 1) != 0 && strncmp(dp->d_name, "..", 2) != 0) {
 			send_sync_msgs_of_friend(tox, dp->d_name);
 		}
 	}
 
-//    char *fake_pubkey = "1234512345123451234512345123451234512345123451234512345123451234512345123451234512345123451234512345";
-//    const char *entry_hex_toxid_string = fake_pubkey;
-//    uint8_t *public_key_bin = hex_string_to_bin2(entry_hex_toxid_string);
-//
-//    char* message_text = "this is a hard-coded fake test message";
-//    uint32_t rawMsgSize = tox_messagev2_size(strlen(message_text), TOX_FILE_KIND_MESSAGEV2_SYNC, 0);
-//    uint8_t *raw_message = calloc(1, rawMsgSize);
-//    uint8_t msgid;
-
-    //tox_messagev2_fsync_wrap(strlen(message_text), public_key_bin, TOX_FILE_KIND_MESSAGEV2_SEND, message_text,123, 456, raw_message, &msgid);
-    //bool res = tox_util_friend_send_sync_message_v2(tox, 0, raw_message, rawMsgSize, NULL);
-    //toxProxyLog(9, "send_sync_msg res=%d", (int)res);
-    
-//    free(raw_message);
-//    free(public_key_bin);
+    closedir(dfd);
 }
 
 int main(int argc, char *argv[]) {
 	openLogFile();
-
-//	toxProxyLog(2, "sqlite3 version = %s", sqlite3_libversion());
 
 	mkdir("db", 0700);
 
@@ -1263,10 +1284,8 @@ int main(int argc, char *argv[]) {
 		tox_iterate(tox, NULL);
 		usleep_usec(tox_iteration_interval(tox) * 1000);
 
-		if (masterIsOnline == true && i % 10 == 0) {
-			//toxProxyLog(2, "send_sync_msg");
+		if ((masterIsOnline == true) && (i % 50 == 0)) {
 			send_sync_msgs(tox);
-			//global_master_comes_online = false;
 		}
 		i++;
 
@@ -1317,3 +1336,4 @@ int main(int argc, char *argv[]) {
 	// HINT: for gprof you need an "exit()" call
 	exit(0);
 }
+
