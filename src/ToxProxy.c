@@ -508,7 +508,7 @@ Tox* openTox() {
 
 #ifdef USE_SEPARATE_SAVEDATA_FILE
 	FILE *f = fopen(savedata_filename, "rb");
-	uint8_t* savedata;
+	uint8_t* savedata = NULL;
 	if (f) {
 		fseek(f, 0, SEEK_END);
 		size_t savedataSize = ftell(f);
