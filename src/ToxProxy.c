@@ -622,10 +622,8 @@ void bootstap_nodes(Tox *tox, DHT_node nodes[], int number_of_nodes, int add_as_
 
     shuffle(random_order_nodenums, number_of_nodes);
 
-    size_t i = 0;
-
     for (size_t j = 0; (int)j < (int)number_of_nodes; j++) {
-        i = (size_t)random_order_nodenums[j];
+        size_t i = (size_t)random_order_nodenums[j];
         bool res = sodium_hex2bin(nodes[i].key_bin, sizeof(nodes[i].key_bin),
                                   nodes[i].key_hex, sizeof(nodes[i].key_hex) - 1, NULL, NULL, NULL);
         toxProxyLog(99, "bootstap_nodes - sodium_hex2bin:res=%d", res);
@@ -735,24 +733,12 @@ void bootstrap(Tox *tox)
     DHT_node nodes3[] = {
         {"51.15.37.145",             33445, "6FC41E2BD381D37E9748FC0E0328CE086AF9598BECC8FEB7DDF2E440475F300E", {0}}
     };
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wall"
-
-    int switch_nodelist_2 = 1;
-
-    if (switch_nodelist_2 == 0) {
-        toxProxyLog(9, "nodeslist:1");
-        bootstap_nodes(tox, nodes1, (int)(sizeof(nodes1) / sizeof(DHT_node)), 1);
-    } else if (switch_nodelist_2 == 2) {
-        toxProxyLog(9, "nodeslist:3");
-        bootstap_nodes(tox, nodes3, (int)(sizeof(nodes3) / sizeof(DHT_node)), 0);
-    } else {
-        // (switch_nodelist_2 == 1)
-        toxProxyLog(9, "nodeslist:2");
-        bootstap_nodes(tox, nodes2, (int)(sizeof(nodes2) / sizeof(DHT_node)), 1);
-    }
-
+    bootstap_nodes(tox, nodes2, (int)(sizeof(nodes2) / sizeof(DHT_node)), 1);
 #pragma GCC diagnostic pop
+
 }
 
 void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length)
