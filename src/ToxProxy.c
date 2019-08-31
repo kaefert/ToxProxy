@@ -579,9 +579,8 @@ void bootstap_nodes(Tox *tox, DHT_node nodes[], int number_of_nodes, int add_as_
 
     shuffle(random_order_nodenums, number_of_nodes);
 
-    size_t i = 0;
     for (size_t j = 0; (int)j < (int)number_of_nodes; j++) {
-        i = (size_t)random_order_nodenums[j];
+    	size_t i = (size_t)random_order_nodenums[j];
         bool res = sodium_hex2bin(nodes[i].key_bin, sizeof(nodes[i].key_bin),
                              nodes[i].key_hex, sizeof(nodes[i].key_hex) - 1, NULL, NULL, NULL);
         toxProxyLog(99, "bootstap_nodes - sodium_hex2bin:res=%d", res);
