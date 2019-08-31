@@ -90,7 +90,7 @@ echo "--------------"
 
 set -x
 
-export CFLAGS=" -flto -fPIC -std=gnu99 -I$_INST_/include/ -L$_INST_/lib -O3 -g -fstack-protector-all "
+export CFLAGS=" -Wall -Wextra -Wno-unused-parameter -flto -fPIC -std=gnu99 -I$_INST_/include/ -L$_INST_/lib -O3 -g -fstack-protector-all "
 gcc $CFLAGS \
 ToxProxy.c \
 sqlite3.c \
