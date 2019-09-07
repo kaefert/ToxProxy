@@ -1022,20 +1022,9 @@ void friend_read_receipt_message_v2_cb(Tox *tox, uint32_t friend_number, uint32_
     uint32_t raw_message_len = tox_messagev2_size(0, TOX_FILE_KIND_MESSAGEV2_ANSWER, 0);
     uint8_t *raw_message_data = calloc(1, raw_message_len);
 
-    uint8_t *public_key_hex = calloc(1, tox_public_key_hex_size + 1);
-    bin2upHex(msgid, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
-    toxProxyLog(0, "msg id before: %s", public_key_hex);
-
-
     bool res = tox_messagev2_wrap(0, TOX_FILE_KIND_MESSAGEV2_ANSWER,
                                   0, NULL, ts_sec, 0,
                                   raw_message_data, msgid);
-
-    memset(public_key_hex, 0, tox_public_key_hex_size + 1);
-    bin2upHex(msgid, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
-    toxProxyLog(0, "msg id after: %s", public_key_hex);
-
-    free(public_key_hex);
 
     writeMessageHelper(tox, friend_number, raw_message_data, raw_message_len, TOX_FILE_KIND_MESSAGEV2_ANSWER);
     
