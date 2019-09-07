@@ -726,12 +726,12 @@ void bootstrap(Tox *tox)
 
 }
 
-void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length)
+void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length, uint32_t msg_type)
 {
 
     uint8_t *msg_id = calloc(1, tox_public_key_size());
     tox_messagev2_get_message_id(message, msg_id);
-    toxProxyLog(2, "New message from %s", sender_key_hex);
+    toxProxyLog(2, "New message from %s msg_type=%d", sender_key_hex, msg_type);
 
     char userDir[tox_public_key_hex_size + strlen(msgsDir) + 1];
     CLEAR(userDir);
@@ -754,11 +754,18 @@ void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length)
     snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02d_%02d%02d-%02d,%06ld",
              tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
 
-    char *msgPath = calloc(1, sizeof(userDir) + 1 + sizeof(timestamp) + 4);
+    char *msgPath = calloc(1, sizeof(userDir) + 1 + sizeof(timestamp) + 4 + 1);
     strcpy(msgPath, userDir);
     strcat(msgPath, "/");
     strcat(msgPath, timestamp);
-    strcat(msgPath, ".txt");
+    if (msg_type == TOX_FILE_KIND_MESSAGEV2_ANSWER)
+    {
+        strcat(msgPath, ".txtA");
+    }
+    else if (msg_type == TOX_FILE_KIND_MESSAGEV2_SEND)
+    {
+        strcat(msgPath, ".txtS");
+    }
 
     FILE *f = fopen(msgPath, "wb");
 
@@ -770,7 +777,7 @@ void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length)
     free(msgPath);
 }
 
-void writeMessageHelper(Tox *tox, uint32_t friend_number, const uint8_t *message, size_t length)
+void writeMessageHelper(Tox *tox, uint32_t friend_number, const uint8_t *message, size_t length, uint32_t msg_type)
 {
 
     uint8_t public_key_bin[tox_public_key_size()];
@@ -782,7 +789,7 @@ void writeMessageHelper(Tox *tox, uint32_t friend_number, const uint8_t *message
     CLEAR(public_key_hex);
 
     bin2upHex(public_key_bin, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
-    writeMessage(public_key_hex, message, length);
+    writeMessage(public_key_hex, message, length, msg_type);
 }
 
 bool file_exists(const char *path)
@@ -1010,6 +1017,30 @@ void friend_sync_message_v2_cb(Tox *tox, uint32_t friend_number, const uint8_t *
 void friend_read_receipt_message_v2_cb(Tox *tox, uint32_t friend_number, uint32_t ts_sec, const uint8_t *msgid)
 {
     toxProxyLog(9, "enter friend_read_receipt_message_v2_cb");
+
+#ifdef TOX_HAVE_TOXUTIL
+    uint32_t raw_message_len = tox_messagev2_size(0, TOX_FILE_KIND_MESSAGEV2_ANSWER, 0);
+    uint8_t *raw_message_data = calloc(1, raw_message_len);
+
+    uint8_t *public_key_hex = calloc(1, tox_public_key_hex_size + 1);
+    bin2upHex(msgid, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
+    toxProxyLog(0, "msg id before: %s", public_key_hex);
+
+
+    bool res = tox_messagev2_wrap(0, TOX_FILE_KIND_MESSAGEV2_ANSWER,
+                                  0, NULL, ts_sec, 0,
+                                  raw_message_data, msgid);
+
+    memset(public_key_hex, 0, tox_public_key_hex_size + 1);
+    bin2upHex(msgid, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
+    toxProxyLog(0, "msg id after: %s", public_key_hex);
+
+    free(public_key_hex);
+
+    writeMessageHelper(tox, friend_number, raw_message_data, raw_message_len, TOX_FILE_KIND_MESSAGEV2_ANSWER);
+    
+#endif
+
 }
 
 void friend_message_v2_cb(Tox *tox, uint32_t friend_number, const uint8_t *raw_message, size_t raw_message_len)
@@ -1046,7 +1077,7 @@ void friend_message_v2_cb(Tox *tox, uint32_t friend_number, const uint8_t *raw_m
             }
         } else {
             // nicht vom master, also wohl ein freund vom master.
-            writeMessageHelper(tox, friend_number, raw_message, raw_message_len);
+            writeMessageHelper(tox, friend_number, raw_message, raw_message_len, TOX_FILE_KIND_MESSAGEV2_SEND);
             //TODO FIXME send acknowledgment here (message v2 ohne text mit wrapper = kompliziert laut tox, 3 bis 4 functions aufruf notwendig)
             // send_text_message_to_friend(tox, friend_number, "thank you for using this proxy. The message will be relayed as soon as my master comes online.");
         }
@@ -1126,9 +1157,20 @@ void send_sync_msg_single(Tox *tox, char *pubKeyHex, char *msgFileName)
         uint8_t *msgid2 = calloc(1, TOX_PUBLIC_KEY_SIZE);
         uint8_t *pubKeyBin = hex_string_to_bin2(pubKeyHex);
 
-        tox_messagev2_sync_wrap(fsize, pubKeyBin, TOX_FILE_KIND_MESSAGEV2_SEND,
-                                rawMsgData, 123, 456, raw_message2, msgid2);
-        toxProxyLog(9, "wrapped raw message = %p", raw_message2);
+        if (msgFileName[strlen(msgFileName) - 1] == 'A')
+        {
+            // TOX_FILE_KIND_MESSAGEV2_ANSWER
+            tox_messagev2_sync_wrap(fsize, pubKeyBin, TOX_FILE_KIND_MESSAGEV2_ANSWER,
+                                    rawMsgData, 665, 987, raw_message2, msgid2);
+            toxProxyLog(9, "wrapped raw message = %p TOX_FILE_KIND_MESSAGEV2_ANSWER", raw_message2);
+        }
+        else // TOX_FILE_KIND_MESSAGEV2_SEND
+        {
+            tox_messagev2_sync_wrap(fsize, pubKeyBin, TOX_FILE_KIND_MESSAGEV2_SEND,
+                                    rawMsgData, 987, 775, raw_message2, msgid2);
+            toxProxyLog(9, "wrapped raw message = %p TOX_FILE_KIND_MESSAGEV2_SEND", raw_message2);
+        }
+
 
         TOX_ERR_FRIEND_SEND_MESSAGE error;
         bool res2 = tox_util_friend_send_sync_message_v2(tox, 0, raw_message2, rawMsgSize2, &error);
