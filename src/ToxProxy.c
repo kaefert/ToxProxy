@@ -347,6 +347,8 @@ void dbInsertMsg()
                 "CREATE TABLE IF NOT EXISTS Messages(" \
                 "id INTEGER PRIMARY KEY AUTOINCREMENT" \
                 ",received DATETIME" \
+                ",forwarded DATETIME" \
+                ",confirmation_received DATETIME" \
                 ",rawMsg BLOB NOT NULL);";
 }
 
@@ -1026,6 +1028,11 @@ void friend_read_receipt_message_v2_cb(Tox *tox, uint32_t friend_number, uint32_
                                   0, NULL, ts_sec, 0,
                                   raw_message_data, msgid);
 
+    char* rawMsgHex = calloc(1, raw_message_len*2+1);
+    bin2upHex(raw_message_data, raw_message_len, rawMsgHex, raw_message_len*2);
+    toxProxyLog(2, "got receipt confirmation: %s, %d", rawMsgHex, ts_sec);
+    free(rawMsgHex);
+
     writeMessageHelper(tox, friend_number, raw_message_data, raw_message_len, TOX_FILE_KIND_MESSAGEV2_ANSWER);
     
 #endif
@@ -1151,7 +1158,11 @@ void send_sync_msg_single(Tox *tox, char *pubKeyHex, char *msgFileName)
             // TOX_FILE_KIND_MESSAGEV2_ANSWER
             tox_messagev2_sync_wrap(fsize, pubKeyBin, TOX_FILE_KIND_MESSAGEV2_ANSWER,
                                     rawMsgData, 665, 987, raw_message2, msgid2);
-            toxProxyLog(9, "wrapped raw message = %p TOX_FILE_KIND_MESSAGEV2_ANSWER", raw_message2);
+
+            char* rawMsgHex = calloc(1, rawMsgSize2*2+1);
+            bin2upHex(raw_message2, rawMsgSize2, rawMsgHex, rawMsgSize2*2);
+            toxProxyLog(9, "wrapped raw message = %s TOX_FILE_KIND_MESSAGEV2_ANSWER", rawMsgHex);
+            free(rawMsgHex);
         }
         else // TOX_FILE_KIND_MESSAGEV2_SEND
         {
