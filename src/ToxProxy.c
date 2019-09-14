@@ -740,8 +740,8 @@ void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length, u
     strcat(userDir, "/");
     strcat(userDir, sender_key_hex);
 
-    mkdir(msgsDir, 0700);
-    mkdir(userDir, 0700);
+    mkdir(msgsDir, S_IRWXU);
+    mkdir(userDir, S_IRWXU);
 
     //TODO FIXME use message v2 message id / hash instead of timestamp of receiving / processing message!
 
@@ -1184,10 +1184,12 @@ void send_sync_msgs_of_friend(Tox *tox, char *pubKeyHex)
                              1); // last +1 is for terminating \0 I guess (without it, memory checker explodes..)
     sprintf(friendDir, "%s/%s", msgsDir, pubKeyHex);
 
+    mkdir(msgsDir, S_IRWXU);
+
     DIR *dfd = opendir(friendDir);
 
     if (dfd == NULL) {
-        toxProxyLog(1, "Can't open msgsDir for sending messages to master (maybe no single message has been received yet?)");
+        // toxProxyLog(1, "Can't open msgsDir for sending messages to master (maybe no single message has been received yet?)");
         free(friendDir);
         return;
     }
@@ -1210,12 +1212,13 @@ void send_sync_msgs_of_friend(Tox *tox, char *pubKeyHex)
 
 void send_sync_msgs(Tox *tox)
 {
+    mkdir(msgsDir, S_IRWXU);
 
     // loop over all directories = public-keys of friends we have received messages from
     DIR *dfd = opendir(msgsDir);
 
     if (dfd == NULL) {
-        toxProxyLog(1, "Can't open msgsDir for sending messages to master (maybe no single message has been received yet?)");
+        // toxProxyLog(1, "Can't open msgsDir for sending messages to master (maybe no single message has been received yet?)");
         return;
     }
 
@@ -1234,7 +1237,7 @@ int main(int argc, char *argv[])
 {
     openLogFile();
 
-    mkdir("db", 0700);
+    mkdir("db", S_IRWXU);
 
     // ---- test ASAN ----
     // char *x = (char*)malloc(10 * sizeof(char*));
