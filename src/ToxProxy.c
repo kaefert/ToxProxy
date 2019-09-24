@@ -347,6 +347,8 @@ void dbInsertMsg()
                 "CREATE TABLE IF NOT EXISTS Messages(" \
                 "id INTEGER PRIMARY KEY AUTOINCREMENT" \
                 ",received DATETIME" \
+                ",forwarded DATETIME" \
+                ",confirmation_received DATETIME" \
                 ",rawMsg BLOB NOT NULL);";
 }
 
