@@ -742,8 +742,8 @@ void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length, u
     strcat(userDir, "/");
     strcat(userDir, sender_key_hex);
 
-    mkdir(msgsDir, 0700);
-    mkdir(userDir, 0700);
+    mkdir(msgsDir, S_IRWXU);
+    mkdir(userDir, S_IRWXU);
 
     //TODO FIXME use message v2 message id / hash instead of timestamp of receiving / processing message!
 
@@ -1028,11 +1028,6 @@ void friend_read_receipt_message_v2_cb(Tox *tox, uint32_t friend_number, uint32_
                                   0, NULL, ts_sec, 0,
                                   raw_message_data, msgid);
 
-    char* rawMsgHex = calloc(1, raw_message_len*2+1);
-    bin2upHex(raw_message_data, raw_message_len, rawMsgHex, raw_message_len*2);
-    toxProxyLog(2, "got receipt confirmation: %s, %d", rawMsgHex, ts_sec);
-    free(rawMsgHex);
-
     writeMessageHelper(tox, friend_number, raw_message_data, raw_message_len, TOX_FILE_KIND_MESSAGEV2_ANSWER);
     
 #endif
@@ -1158,11 +1153,7 @@ void send_sync_msg_single(Tox *tox, char *pubKeyHex, char *msgFileName)
             // TOX_FILE_KIND_MESSAGEV2_ANSWER
             tox_messagev2_sync_wrap(fsize, pubKeyBin, TOX_FILE_KIND_MESSAGEV2_ANSWER,
                                     rawMsgData, 665, 987, raw_message2, msgid2);
-
-            char* rawMsgHex = calloc(1, rawMsgSize2*2+1);
-            bin2upHex(raw_message2, rawMsgSize2, rawMsgHex, rawMsgSize2*2);
-            toxProxyLog(9, "wrapped raw message = %s TOX_FILE_KIND_MESSAGEV2_ANSWER", rawMsgHex);
-            free(rawMsgHex);
+            toxProxyLog(9, "wrapped raw message = %p TOX_FILE_KIND_MESSAGEV2_ANSWER", raw_message2);
         }
         else // TOX_FILE_KIND_MESSAGEV2_SEND
         {
@@ -1195,10 +1186,12 @@ void send_sync_msgs_of_friend(Tox *tox, char *pubKeyHex)
                              1); // last +1 is for terminating \0 I guess (without it, memory checker explodes..)
     sprintf(friendDir, "%s/%s", msgsDir, pubKeyHex);
 
+    mkdir(msgsDir, S_IRWXU);
+
     DIR *dfd = opendir(friendDir);
 
     if (dfd == NULL) {
-        toxProxyLog(1, "Can't open msgsDir for sending messages to master (maybe no single message has been received yet?)");
+        // toxProxyLog(1, "Can't open msgsDir for sending messages to master (maybe no single message has been received yet?)");
         free(friendDir);
         return;
     }
@@ -1221,12 +1214,13 @@ void send_sync_msgs_of_friend(Tox *tox, char *pubKeyHex)
 
 void send_sync_msgs(Tox *tox)
 {
+    mkdir(msgsDir, S_IRWXU);
 
     // loop over all directories = public-keys of friends we have received messages from
     DIR *dfd = opendir(msgsDir);
 
     if (dfd == NULL) {
-        toxProxyLog(1, "Can't open msgsDir for sending messages to master (maybe no single message has been received yet?)");
+        // toxProxyLog(1, "Can't open msgsDir for sending messages to master (maybe no single message has been received yet?)");
         return;
     }
 
@@ -1245,7 +1239,7 @@ int main(int argc, char *argv[])
 {
     openLogFile();
 
-    mkdir("db", 0700);
+    mkdir("db", S_IRWXU);
 
     // ---- test ASAN ----
     // char *x = (char*)malloc(10 * sizeof(char*));
