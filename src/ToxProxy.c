@@ -728,12 +728,13 @@ void bootstrap(Tox *tox)
 
 }
 
-void writeConferenceMessage(Tox *tox, const char *sender_key_hex, const uint8_t *message_orig, size_t length_orig, uint32_t msg_type, char* peer_pubkey_hex)
+void writeConferenceMessage(Tox *tox, const char *sender_key_hex, const uint8_t *message_orig, size_t length_orig,
+                            uint32_t msg_type, char *peer_pubkey_hex)
 {
     size_t length = length_orig + 64;
     size_t len_copy = length_orig;
-    if (length > TOX_MAX_MESSAGE_LENGTH)
-    {
+
+    if (length > TOX_MAX_MESSAGE_LENGTH) {
         length = TOX_MAX_MESSAGE_LENGTH;
         len_copy = TOX_MAX_MESSAGE_LENGTH - (TOX_MAX_MESSAGE_LENGTH - (length_orig + 64));
     }
@@ -745,7 +746,7 @@ void writeConferenceMessage(Tox *tox, const char *sender_key_hex, const uint8_t 
     memcpy(message + 64, message_orig, len_copy);
 
     uint32_t raw_message_len = tox_messagev2_size(length, TOX_FILE_KIND_MESSAGEV2_SEND, 0);
-    
+
     toxProxyLog(0, "writeConferenceMessage:raw_message_len=%d length=%d", raw_message_len, (int)length);
     uint8_t *raw_message_data = calloc(1, raw_message_len);
 
@@ -834,12 +835,10 @@ void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length, u
     strcpy(msgPath, userDir);
     strcat(msgPath, "/");
     strcat(msgPath, timestamp);
-    if (msg_type == TOX_FILE_KIND_MESSAGEV2_ANSWER)
-    {
+
+    if (msg_type == TOX_FILE_KIND_MESSAGEV2_ANSWER) {
         strcat(msgPath, ".txtA");
-    }
-    else if (msg_type == TOX_FILE_KIND_MESSAGEV2_SEND)
-    {
+    } else if (msg_type == TOX_FILE_KIND_MESSAGEV2_SEND) {
         strcat(msgPath, ".txtS");
     }
 
@@ -867,7 +866,8 @@ void writeMessageHelper(Tox *tox, uint32_t friend_number, const uint8_t *message
     writeMessage(public_key_hex, message, length, msg_type);
 }
 
-void writeConferenceMessageHelper(Tox *tox, const uint8_t *conference_id, const uint8_t *message, size_t length, char* peer_pubkey_hex)
+void writeConferenceMessageHelper(Tox *tox, const uint8_t *conference_id, const uint8_t *message, size_t length,
+                                  char *peer_pubkey_hex)
 {
     char conference_id_hex[TOX_CONFERENCE_ID_SIZE * 2 + 1];
     CLEAR(conference_id_hex);
@@ -1116,33 +1116,25 @@ void conference_message_cb(Tox *tox, uint32_t conference_number, uint32_t peer_n
     TOX_ERR_CONFERENCE_PEER_QUERY error;
     bool res = tox_conference_peer_get_public_key(tox, conference_number, peer_number, public_key_bin, &error);
 
-    if(res == false)
-    {
+    if (res == false) {
         toxProxyLog(0, "received conference from peer without pubkey?");
         return;
-    }
-    else
-    {
+    } else {
         char public_key_hex[tox_public_key_hex_size];
         CLEAR(public_key_hex);
         bin2upHex(public_key_bin, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
 
-        if (is_master(public_key_hex))
-        {
+        if (is_master(public_key_hex)) {
             toxProxyLog(0, "received conference text message from master");
-        }
-        else
-        {
+        } else {
             uint8_t conference_id_buffer[TOX_CONFERENCE_ID_SIZE + 1];
             CLEAR(conference_id_buffer);
             bool res = tox_conference_get_id(tox, conference_number, conference_id_buffer);
-            if(res == false)
-            {
+
+            if (res == false) {
                 toxProxyLog(0, "conference id unknown?");
                 return;
-            }
-            else
-            {
+            } else {
                 writeConferenceMessageHelper(tox, conference_id_buffer, message, length, public_key_hex);
             }
         }
@@ -1172,7 +1164,7 @@ void friend_read_receipt_message_v2_cb(Tox *tox, uint32_t friend_number, uint32_
                                   raw_message_data, msgid);
 
     writeMessageHelper(tox, friend_number, raw_message_data, raw_message_len, TOX_FILE_KIND_MESSAGEV2_ANSWER);
-    
+
 #endif
 
 }
@@ -1291,15 +1283,12 @@ void send_sync_msg_single(Tox *tox, char *pubKeyHex, char *msgFileName)
         uint8_t *msgid2 = calloc(1, TOX_PUBLIC_KEY_SIZE);
         uint8_t *pubKeyBin = hex_string_to_bin2(pubKeyHex);
 
-        if (msgFileName[strlen(msgFileName) - 1] == 'A')
-        {
+        if (msgFileName[strlen(msgFileName) - 1] == 'A') {
             // TOX_FILE_KIND_MESSAGEV2_ANSWER
             tox_messagev2_sync_wrap(fsize, pubKeyBin, TOX_FILE_KIND_MESSAGEV2_ANSWER,
                                     rawMsgData, 665, 987, raw_message2, msgid2);
             toxProxyLog(9, "wrapped raw message = %p TOX_FILE_KIND_MESSAGEV2_ANSWER", raw_message2);
-        }
-        else // TOX_FILE_KIND_MESSAGEV2_SEND
-        {
+        } else { // TOX_FILE_KIND_MESSAGEV2_SEND
             tox_messagev2_sync_wrap(fsize, pubKeyBin, TOX_FILE_KIND_MESSAGEV2_SEND,
                                     rawMsgData, 987, 775, raw_message2, msgid2);
             toxProxyLog(9, "wrapped raw message = %p TOX_FILE_KIND_MESSAGEV2_SEND", raw_message2);
