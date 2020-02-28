@@ -728,6 +728,80 @@ void bootstrap(Tox *tox)
 
 }
 
+void writeConferenceMessage(Tox *tox, const char *sender_key_hex, const uint8_t *message_orig, size_t length_orig, uint32_t msg_type, char* peer_pubkey_hex)
+{
+    size_t length = length_orig + 64;
+    size_t len_copy = length_orig;
+    if (length > TOX_MAX_MESSAGE_LENGTH)
+    {
+        length = TOX_MAX_MESSAGE_LENGTH;
+        len_copy = TOX_MAX_MESSAGE_LENGTH - (TOX_MAX_MESSAGE_LENGTH - (length_orig + 64));
+    }
+
+    uint8_t *message = calloc(1, length);
+    // put peer pubkey in front of message
+    memcpy(message, peer_pubkey_hex, 64);
+    // put message after peer pubkey
+    memcpy(message + 64, message_orig, len_copy);
+
+    uint32_t raw_message_len = tox_messagev2_size(length, TOX_FILE_KIND_MESSAGEV2_SEND, 0);
+    
+    toxProxyLog(0, "writeConferenceMessage:raw_message_len=%d length=%d", raw_message_len, (int)length);
+    uint8_t *raw_message_data = calloc(1, raw_message_len);
+
+    uint32_t ts_sec = (uint32_t) get_unix_time();
+
+    char msgid[TOX_PUBLIC_KEY_SIZE];
+    CLEAR(msgid);
+    bool res = tox_messagev2_wrap(length, TOX_FILE_KIND_MESSAGEV2_SEND,
+                                  0, message, ts_sec, 0,
+                                  raw_message_data, msgid);
+
+    char msg_id_hex[tox_public_key_hex_size];
+    CLEAR(msg_id_hex);
+    bin2upHex(msgid, tox_public_key_size(), msg_id_hex, tox_public_key_hex_size);
+    toxProxyLog(0, "writeConferenceMessage:msg_id_hex=%s", msg_id_hex);
+
+    char userDir[tox_public_key_hex_size + strlen(msgsDir) + 1];
+    CLEAR(userDir);
+
+    strcpy(userDir, msgsDir);
+    strcat(userDir, "/");
+    strcat(userDir, sender_key_hex);
+
+    mkdir(msgsDir, S_IRWXU);
+    mkdir(userDir, S_IRWXU);
+
+    //TODO FIXME use message v2 message id / hash instead of timestamp of receiving / processing message!
+
+    char timestamp[strlen("0000-00-00_0000-00,000000") + 1]; // = "0000-00-00_0000-00,000000";
+    CLEAR(timestamp);
+
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    struct tm tm = *localtime(&tv.tv_sec);
+    snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02d_%02d%02d-%02d,%06ld",
+             tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
+
+    char *msgPath = calloc(1, sizeof(userDir) + 1 + sizeof(timestamp) + 4 + 1);
+    strcpy(msgPath, userDir);
+    strcat(msgPath, "/");
+    strcat(msgPath, timestamp);
+    strcat(msgPath, ".txtS");
+
+    FILE *f = fopen(msgPath, "wb");
+
+    if (f) {
+        fwrite(raw_message_data, raw_message_len, 1, f);
+        fclose(f);
+    }
+
+    free(raw_message_data);
+    free(message);
+    free(msgPath);
+}
+
+
 void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length, uint32_t msg_type)
 {
 
@@ -781,7 +855,6 @@ void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length, u
 
 void writeMessageHelper(Tox *tox, uint32_t friend_number, const uint8_t *message, size_t length, uint32_t msg_type)
 {
-
     uint8_t public_key_bin[tox_public_key_size()];
     CLEAR(public_key_bin);
 
@@ -792,6 +865,15 @@ void writeMessageHelper(Tox *tox, uint32_t friend_number, const uint8_t *message
 
     bin2upHex(public_key_bin, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
     writeMessage(public_key_hex, message, length, msg_type);
+}
+
+void writeConferenceMessageHelper(Tox *tox, const uint8_t *conference_id, const uint8_t *message, size_t length, char* peer_pubkey_hex)
+{
+    char conference_id_hex[TOX_CONFERENCE_ID_SIZE * 2 + 1];
+    CLEAR(conference_id_hex);
+
+    bin2upHex(conference_id, TOX_CONFERENCE_ID_SIZE, conference_id_hex, (TOX_CONFERENCE_ID_SIZE * 2 + 1));
+    writeConferenceMessage(tox, conference_id_hex, message, length, TOX_FILE_KIND_MESSAGEV2_SEND, peer_pubkey_hex);
 }
 
 bool file_exists(const char *path)
@@ -1009,6 +1091,67 @@ void self_connection_status_cb(Tox *tox, TOX_CONNECTION connection_status, void 
             on_online();
             break;
     }
+}
+
+void conference_invite_cb(Tox *tox, uint32_t friend_number, TOX_CONFERENCE_TYPE type, const uint8_t *cookie,
+                          size_t length, void *user_data)
+{
+    if (!is_master_friendnumber(tox, friend_number)) {
+        toxProxyLog(0, "received conference invite from somebody who's not master!");
+        return;
+    }
+
+    toxProxyLog(0, "received conference invite from fnum:%d", friend_number);
+    long conference_num = tox_conference_join(tox, friend_number, cookie, length, NULL);
+    updateToxSavedata(tox);
+}
+
+void conference_message_cb(Tox *tox, uint32_t conference_number, uint32_t peer_number, TOX_MESSAGE_TYPE type,
+                           const uint8_t *message, size_t length, void *user_data)
+{
+    toxProxyLog(0, "received conference text message conf:%d peer:%d", conference_number, peer_number);
+
+    uint8_t public_key_bin[TOX_PUBLIC_KEY_SIZE];
+    CLEAR(public_key_bin);
+    TOX_ERR_CONFERENCE_PEER_QUERY error;
+    bool res = tox_conference_peer_get_public_key(tox, conference_number, peer_number, public_key_bin, &error);
+
+    if(res == false)
+    {
+        toxProxyLog(0, "received conference from peer without pubkey?");
+        return;
+    }
+    else
+    {
+        char public_key_hex[tox_public_key_hex_size];
+        CLEAR(public_key_hex);
+        bin2upHex(public_key_bin, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
+
+        if (is_master(public_key_hex))
+        {
+            toxProxyLog(0, "received conference text message from master");
+        }
+        else
+        {
+            uint8_t conference_id_buffer[TOX_CONFERENCE_ID_SIZE + 1];
+            CLEAR(conference_id_buffer);
+            bool res = tox_conference_get_id(tox, conference_number, conference_id_buffer);
+            if(res == false)
+            {
+                toxProxyLog(0, "conference id unknown?");
+                return;
+            }
+            else
+            {
+                writeConferenceMessageHelper(tox, conference_id_buffer, message, length, public_key_hex);
+            }
+        }
+    }
+}
+
+void conference_peer_list_changed_cb(Tox *tox, uint32_t conference_number, void *user_data)
+{
+    updateToxSavedata(tox);
 }
 
 void friend_sync_message_v2_cb(Tox *tox, uint32_t friend_number, const uint8_t *message, size_t length)
@@ -1303,6 +1446,9 @@ int main(int argc, char *argv[])
     tox_utils_callback_friend_message_v2(tox, friend_message_v2_cb);
     tox_utils_callback_friend_read_receipt_message_v2(tox, friend_read_receipt_message_v2_cb);
     tox_utils_callback_friend_sync_message_v2(tox, friend_sync_message_v2_cb);
+    tox_callback_conference_invite(tox, conference_invite_cb);
+    tox_callback_conference_message(tox, conference_message_cb);
+    tox_callback_conference_peer_list_changed(tox, conference_peer_list_changed_cb);
 #else
     toxProxyLog(9, "NOT using toxutil");
     tox_callback_self_connection_status(tox, self_connection_status_cb);
@@ -1357,6 +1503,9 @@ int main(int argc, char *argv[])
     signal(SIGINT, sigint_handler);
     pthread_setname_np(pthread_self(), "t_main");
 
+    size_t num_conferences = tox_conference_get_chatlist_size(tox);
+    toxProxyLog(2, "num_conferences=%d", (int)num_conferences);
+
     int i = 0;
 
     while (tox_loop_running) {
@@ -1365,6 +1514,12 @@ int main(int argc, char *argv[])
 
         if ((masterIsOnline == true) && (i % 50 == 0)) {
             send_sync_msgs(tox);
+        }
+
+        // TODO: this is just to make sure stuff is saved
+        //       make it better!
+        if (i % 30000 == 0) {
+            updateToxSavedata(tox);
         }
 
         i++;
