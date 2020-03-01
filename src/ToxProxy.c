@@ -1103,6 +1103,9 @@ void conference_invite_cb(Tox *tox, uint32_t friend_number, TOX_CONFERENCE_TYPE 
 
     toxProxyLog(0, "received conference invite from fnum:%d", friend_number);
     long conference_num = tox_conference_join(tox, friend_number, cookie, length, NULL);
+
+    toxProxyLog(0, "received conference join: res=%d", (int)conference_num);
+
     updateToxSavedata(tox);
 }
 
@@ -1499,7 +1502,8 @@ int main(int argc, char *argv[])
 
     while (tox_loop_running) {
         tox_iterate(tox, NULL);
-        usleep_usec(tox_iteration_interval(tox) * 1000);
+        // usleep_usec(tox_iteration_interval(tox) * 1000);
+        usleep_usec(50 * 1000);
 
         if ((masterIsOnline == true) && (i % 50 == 0)) {
             send_sync_msgs(tox);
