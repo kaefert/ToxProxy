@@ -1,6 +1,10 @@
 # ToxProxy
 
-As of yet mostly just a copy of the EchoBot from
-<https://wiki.tox.chat/developers/client_examples/echo_bot>
+Offline Messages for Tox.
 
-Zoff and me are currently working on making this ToxProxy work together with the Android Tox client TriFa to support usage of a Proxy to be able to only periodically check for messages on battery powered devices to reduce power and network usage.
+### Build Status
+
+**CircleCI** [![CircleCI](https://circleci.com/gh/zoff99/ToxProxy/tree/tweaks_001.svg?style=svg)](https://circleci.com/gh/zoff99/ToxProxy/tree/tweaks_001)<br>
+
+<img height="300" src="https://raw.githubusercontent.com/zoff99/ToxProxy/zoff99/tweaks_001/pix/toxproxy_001_medium.jpg"></img><br>
+
