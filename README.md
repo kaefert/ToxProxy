@@ -1,6 +1,6 @@
 # ToxProxy
 
-Offline Messages for Tox.
+<h2>Offline Messages for Tox.</h2>
 
 ### Build Status
 
