@@ -118,6 +118,7 @@ const char *masterFile = "./db/toxproxymasterpubkey.txt";
 
 #ifdef WRITE_MY_TOXID_TO_FILE
 const char *my_toxid_filename_txt = "toxid.txt";
+const char *my_toxid_filename_txt2 = "./db/toxid.txt";
 #endif
 
 const char *shell_cmd__onstart = "./scripts/on_start.sh 2> /dev/null";
@@ -1410,6 +1411,12 @@ int main(int argc, char *argv[])
         fclose(fp);
     }
 
+    FILE *fp2 = fopen(my_toxid_filename_txt2, "wb");
+
+    if (fp2) {
+        fprintf(fp2, "%s", tox_id_hex);
+        fclose(fp2);
+    }
 #endif
 
     size_t friends = tox_self_get_friend_list_size(tox);
