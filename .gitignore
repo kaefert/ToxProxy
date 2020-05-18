@@ -8,3 +8,4 @@ ToxProxy_ToxID.txt
 ToxProxy*.db
 /db/
 toxid*.txtdockerdata/
+dockerdata/
