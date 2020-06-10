@@ -9,3 +9,5 @@ ToxProxy*.db
 /db/
 toxid*.txtdockerdata/
 dockerdata/
+build/
+inst/
