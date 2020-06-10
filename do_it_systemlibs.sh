@@ -85,10 +85,13 @@ $_INST_/lib/libtoxcore.a \
 -lx264 \
 -lavcodec \
 -lavutil \
+-lsodium \
 -lm \
--l:libsodium.a \
 -lpthread \
 -o ToxProxy
+
+# -l:libsodium.a \
+
 
 ls -hal ToxProxy
 file ToxProxy
