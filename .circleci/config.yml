@@ -13,7 +13,7 @@ jobs:
     #machine:
     #  image: circleci/classic:latest
     docker:
-      - image: ubuntu:20.04
+      - image: ubuntu:18.04
 
     steps:
       - run: &apt_install
