@@ -1162,7 +1162,7 @@ void friend_read_receipt_message_v2_cb(Tox *tox, uint32_t friend_number, uint32_
 	// check if the received msg is confirm conference msg received
 	// todo: when sending cached msgs to master: don't delete them instantly, instead only delete them here, if the receipt message's id is equal to one of the stored ones.
 	// also: make long enough pauses in sending messages to master to allow for receipt msgs to come in and get processed.
-	
+
 #ifdef TOX_HAVE_TOXUTIL
     uint32_t raw_message_len = tox_messagev2_size(0, TOX_FILE_KIND_MESSAGEV2_ANSWER, 0);
     uint8_t *raw_message_data = calloc(1, raw_message_len);
