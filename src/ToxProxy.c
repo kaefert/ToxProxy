@@ -757,11 +757,11 @@ void writeConferenceMessage(Tox *tox, const char *sender_key_hex, const uint8_t 
     CLEAR(msgid);
     bool res = tox_messagev2_wrap(length, TOX_FILE_KIND_MESSAGEV2_SEND,
                                   0, message, ts_sec, 0,
-                                  raw_message_data, msgid);
+                                  raw_message_data, (uint8_t *)msgid);
 
     char msg_id_hex[tox_public_key_hex_size];
     CLEAR(msg_id_hex);
-    bin2upHex(msgid, tox_public_key_size(), msg_id_hex, tox_public_key_hex_size);
+    bin2upHex((const uint8_t *)msgid, tox_public_key_size(), msg_id_hex, tox_public_key_hex_size);
     toxProxyLog(0, "writeConferenceMessage:msg_id_hex=%s", msg_id_hex);
 
     char userDir[tox_public_key_hex_size + strlen(msgsDir) + 1];
@@ -1244,6 +1244,7 @@ bool is_answer_to_synced_message(Tox *tox, uint32_t friend_number, const uint8_t
                                                 sprintf(run_cmd, "rm %s/%s*", friendDir, delete_file_glob);
                                                 toxProxyLog(2, "is_answer_to_synced_message: running cmd: %s", run_cmd);
                                                 int cmd_res = system(run_cmd);
+                                                cmd_res = 0;
                                                 toxProxyLog(2, "is_answer_to_synced_message: cmd DONE");
                                                 free(run_cmd);
                                                 free(delete_file_glob);
@@ -1292,6 +1293,7 @@ void friend_read_receipt_message_v2_cb(Tox *tox, uint32_t friend_number, uint32_
     bool res = tox_messagev2_wrap(0, TOX_FILE_KIND_MESSAGEV2_ANSWER,
                                   0, NULL, ts_sec, 0,
                                   raw_message_data, (uint8_t *)msgid);
+    res = true;
 
     // check if this is an answer for a message we synced -> then just delete this message and not send it again
     // otherwise save the answer message
