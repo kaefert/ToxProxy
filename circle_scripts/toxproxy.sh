@@ -212,8 +212,8 @@ add_flag -Wno-documentation
 # reactivate this later! ------------
 # add_flag -Wno-error=pointer-sign
 add_flag -Wno-pointer-sign
-add_flag -Wno-error=extra-semi-stmt
-add_flag -Wno-error=undef
+# add_flag -Wno-error=extra-semi-stmt
+# add_flag -Wno-error=undef
 # reactivate this later! ------------
 
 
@@ -232,7 +232,6 @@ set -x
 clang-10 $CFLAGS \
 $C_FLAGS $CXX_FLAGS $LD_FLAGS \
 ToxProxy.c \
-sqlite3.c \
 $_INST_/lib/libtoxcore.a \
 $_INST_/lib/libtoxav.a \
 $_INST_/lib/libtoxencryptsave.a \
@@ -242,7 +241,6 @@ $_INST_/lib/libx264.a \
 $_INST_/lib/libavcodec.a \
 $_INST_/lib/libavutil.a \
 $_INST_/lib/libsodium.a \
--lsqlite3 \
 -lm \
 -ldl \
 -lpthread \
