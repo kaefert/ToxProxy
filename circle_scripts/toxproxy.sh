@@ -115,7 +115,6 @@ add_flag -O2 -march=native
 # Warn on non-ISO C.
 add_c_flag -pedantic
 add_c_flag -std=c99
-add_cxx_flag -std=c++11
 
 add_flag -g3
 add_flag -ftrapv
@@ -167,13 +166,6 @@ add_flag -Wno-used-but-marked-unused
 add_flag -Wno-vla
 
 # Disable specific warning flags for C++.
-
-# Comma at end of enum is supported everywhere we run.
-add_cxx_flag -Wno-c++98-compat-pedantic
-# TODO(iphydf): Stop using flexible array members.
-add_cxx_flag -Wno-c99-extensions
-# We're C-compatible, so use C style casts.
-add_cxx_flag -Wno-old-style-cast
 
 # Downgrade to warning so we still see it.
 # add_flag -Wno-error=documentation-unknown-command
