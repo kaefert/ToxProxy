@@ -1155,6 +1155,11 @@ void friend_sync_message_v2_cb(Tox *tox, uint32_t friend_number, const uint8_t *
     toxProxyLog(9, "enter friend_sync_message_v2_cb");
 }
 
+bool is_answer_to_synced_message(Tox *tox, uint32_t friend_number, const uint8_t *message, size_t length)
+{
+    return false;
+}
+
 void friend_read_receipt_message_v2_cb(Tox *tox, uint32_t friend_number, uint32_t ts_sec, const uint8_t *msgid)
 {
     toxProxyLog(9, "enter friend_read_receipt_message_v2_cb");
@@ -1171,7 +1176,16 @@ void friend_read_receipt_message_v2_cb(Tox *tox, uint32_t friend_number, uint32_
                                   0, NULL, ts_sec, 0,
                                   raw_message_data, msgid);
 
-    writeMessageHelper(tox, friend_number, raw_message_data, raw_message_len, TOX_FILE_KIND_MESSAGEV2_ANSWER);
+    // check if this is an answer for a message we synced -> then just delete this message and not send it again
+    // otherwise save the answer message
+
+    if (is_answer_to_synced_message(tox, friend_number, raw_message_data, raw_message_len))
+    {
+    }
+    else
+    {
+        writeMessageHelper(tox, friend_number, raw_message_data, raw_message_len, TOX_FILE_KIND_MESSAGEV2_ANSWER);
+    }
 
 #endif
 
