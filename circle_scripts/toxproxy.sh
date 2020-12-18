@@ -235,7 +235,7 @@ export CFLAGS=" -fPIC -std=gnu99 -I$_INST_/include/ -L$_INST_/lib -O3 -g -fstack
 
 set -x
 
-gcc $CFLAGS \
+clang $CFLAGS \
 $C_FLAGS $CXX_FLAGS $LD_FLAGS \
 ToxProxy.c \
 sqlite3.c \

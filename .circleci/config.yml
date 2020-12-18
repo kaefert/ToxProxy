@@ -13,7 +13,7 @@ jobs:
     #machine:
     #  image: circleci/classic:latest
     docker:
-      - image: ubuntu:16.04
+      - image: ubuntu:20.04
 
     steps:
       - run: &apt_install
@@ -29,6 +29,10 @@ jobs:
             git bc wget rsync cmake make pkg-config libtool
             ssh gzip tar unzip
             coreutils
+
+      - run: dpkg -l | grep clang
+      - run: type -a clang
+      - run: clang --version
       - checkout
       #- restore_cache:
       #    key: ctc-library-dependencies-v2-{{ .Branch }}
