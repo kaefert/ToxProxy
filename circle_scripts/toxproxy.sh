@@ -212,6 +212,8 @@ add_flag -Wno-documentation
 # reactivate this later! ------------
 # add_flag -Wno-error=pointer-sign
 add_flag -Wno-pointer-sign
+add_flag -Wno-error=extra-semi-stmt
+add_flag -Wno-error=undef
 # reactivate this later! ------------
 
 
