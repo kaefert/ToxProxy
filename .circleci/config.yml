@@ -38,10 +38,10 @@ jobs:
       - run: if [ -e build_dir ]; then export oo="cache" ; else export oo="" ; fi ; mkdir -p build_dir ; cd build_dir ; pwd ; ls -al ; bash ../circle_scripts/deps.sh "$oo"
 
       - run: &apt_install
-          export DEBIAN_FRONTEND=noninteractive ; apt install -y --no-install-recommends clang
+          export DEBIAN_FRONTEND=noninteractive ; apt install -y --no-install-recommends clang-10
       - run: dpkg -l | grep clang
-      - run: type -a clang
-      - run: clang --version
+      - run: type -a clang-10
+      - run: clang-10 --version
 
 
       - run: cd build_dir ; bash ../circle_scripts/toxproxy.sh '../'
