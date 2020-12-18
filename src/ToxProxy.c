@@ -1312,7 +1312,7 @@ void send_sync_msg_single(Tox *tox, char *pubKeyHex, char *msgFileName)
         free(pubKeyBin);
         free(msgid2);
 
-        unlink(msgPath);
+        // do not delete messages here!! // unlink(msgPath);
     }
 
     free(msgPath);
