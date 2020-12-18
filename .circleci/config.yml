@@ -20,7 +20,7 @@ jobs:
           apt update &&
           export DEBIAN_FRONTEND=noninteractive ; apt install -y --no-install-recommends
             cmake
-            gcc
+            gcc g++
             libconfig-dev
             libgtest-dev
             ninja-build
