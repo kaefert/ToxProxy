@@ -803,7 +803,6 @@ void writeConferenceMessage(Tox *tox, const char *sender_key_hex, const uint8_t 
     free(msgPath);
 }
 
-
 void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length, uint32_t msg_type)
 {
 
@@ -1157,6 +1156,124 @@ void friend_sync_message_v2_cb(Tox *tox, uint32_t friend_number, const uint8_t *
 
 bool is_answer_to_synced_message(Tox *tox, uint32_t friend_number, const uint8_t *message, size_t length)
 {
+    bool ret = false;
+
+    uint8_t public_key_bin[tox_public_key_size()];
+    CLEAR(public_key_bin);
+
+    tox_friend_get_public_key(tox, friend_number, public_key_bin, NULL);
+
+    char public_key_hex[tox_public_key_hex_size];
+    CLEAR(public_key_hex);
+
+    bin2upHex(public_key_bin, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
+
+    uint8_t *msg_id = calloc(1, tox_public_key_size());
+    if (msg_id)
+    {
+        tox_messagev2_get_message_id(message, msg_id);
+
+        char msgid2_str[tox_public_key_hex_size + 1];
+        CLEAR(msgid2_str);
+        bin2upHex(msg_id, tox_public_key_size(), msgid2_str, tox_public_key_hex_size);
+
+        toxProxyLog(2, "is_answer_to_synced_message: receipt from %s id __%s__", public_key_hex, msgid2_str);
+
+        // find that message and delete the file for it ----------------
+
+        mkdir(msgsDir, S_IRWXU);
+        DIR *dfd_m = opendir(msgsDir);
+        if (dfd_m == NULL)
+        {
+            free(msg_id);
+            return false;
+        }
+
+        struct dirent *dp_m = NULL;
+
+        while ((dp_m = readdir(dfd_m)) != NULL)
+        {
+            if (dp_m->d_name)
+            {
+                if (strlen(dp_m->d_name) > 2)
+                {
+                    if (strncmp(dp_m->d_name, ".", 1) != 0 && strncmp(dp_m->d_name, "..", 2) != 0)
+                    {
+                        // ****************************************
+
+                        char *friendDir = calloc(1, strlen(msgsDir) + 1 + strlen(dp_m->d_name) + 1);
+                        sprintf(friendDir, "%s/%s", msgsDir, dp_m->d_name);
+
+                        mkdir(msgsDir, S_IRWXU);
+                        DIR *dfd = opendir(friendDir);
+                        if (dfd == NULL)
+                        {
+                            free(friendDir);
+                            free(msg_id);
+                            return false;
+                        }
+
+                        struct dirent *dp = NULL;
+
+#define BASE_NAME_GLOB_LEN 31
+#define END_PART_GLOB_LEN 68
+
+                        while ((dp = readdir(dfd)) != NULL)
+                        {
+                            if (dp->d_name)
+                            {
+                                if (strlen(dp->d_name) > 2)
+                                {
+                                    if (strncmp(dp->d_name, ".", 1) != 0 && strncmp(dp->d_name, "..", 2) != 0)
+                                    {
+                                        int len = strlen(dp->d_name);
+                                        const char *last_char = &dp->d_name[len - 1];
+                                        if (strncmp(last_char, "_", 1) == 0)
+                                        {
+                                            const char *last_char2 = &dp->d_name[len - END_PART_GLOB_LEN];
+                                            char *comp_str = calloc(1, (END_PART_GLOB_LEN + 2));
+                                            sprintf(comp_str, "__%s__", msgid2_str);
+
+                                            if (strncmp(last_char2, comp_str, END_PART_GLOB_LEN) == 0)
+                                            {
+                                                toxProxyLog(2, "is_answer_to_synced_message: found id %s in %s", comp_str, dp->d_name);
+                                                // now delete all files for that id
+                                                char *delete_file_glob = calloc(1, 1000);
+                                                snprintf(delete_file_glob, BASE_NAME_GLOB_LEN, "%s", dp->d_name);
+                                                char *run_cmd = calloc(1, 1000);
+                                                sprintf(run_cmd, "rm %s/%s*", friendDir, delete_file_glob);
+                                                toxProxyLog(2, "is_answer_to_synced_message: running cmd: %s", run_cmd);
+                                                int cmd_res = system(run_cmd);
+                                                toxProxyLog(2, "is_answer_to_synced_message: cmd DONE");
+                                                free(run_cmd);
+                                                free(delete_file_glob);
+
+                                                free(comp_str);
+
+                                                ret = true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // find that message and delete the file for it ----------------
+                        closedir(dfd);
+                        free(friendDir);
+
+                        // ****************************************
+                    }
+                }
+            }
+        }
+
+        closedir(dfd_m);
+
+        free(msg_id);
+        return ret;
+    }
+
     return false;
 }
 
@@ -1174,7 +1291,7 @@ void friend_read_receipt_message_v2_cb(Tox *tox, uint32_t friend_number, uint32_
 
     bool res = tox_messagev2_wrap(0, TOX_FILE_KIND_MESSAGEV2_ANSWER,
                                   0, NULL, ts_sec, 0,
-                                  raw_message_data, msgid);
+                                  raw_message_data, (uint8_t *)msgid);
 
     // check if this is an answer for a message we synced -> then just delete this message and not send it again
     // otherwise save the answer message
@@ -1271,13 +1388,12 @@ void friend_lossless_packet_cb(Tox *tox, uint32_t friend_number, const uint8_t *
 
 void send_sync_msg_single(Tox *tox, char *pubKeyHex, char *msgFileName)
 {
-
     char *msgPath = calloc(1, strlen(msgsDir) + 1 + strlen(pubKeyHex) + 1 + strlen(msgFileName) + 1);
+
     // last +1 is for terminating \0 I guess (without it, memory checker explodes..)
     sprintf(msgPath, "%s/%s/%s", msgsDir, pubKeyHex, msgFileName);
 
     FILE *f = fopen(msgPath, "rb");
-
     if (f) {
         fseek(f, 0, SEEK_END);
         long fsize = ftell(f);
@@ -1309,17 +1425,33 @@ void send_sync_msg_single(Tox *tox, char *pubKeyHex, char *msgFileName)
             // TOX_FILE_KIND_MESSAGEV2_ANSWER
             tox_messagev2_sync_wrap(fsize, pubKeyBin, TOX_FILE_KIND_MESSAGEV2_ANSWER,
                                     rawMsgData, 665, 987, raw_message2, msgid2);
-            toxProxyLog(9, "wrapped raw message = %p TOX_FILE_KIND_MESSAGEV2_ANSWER", raw_message2);
+            toxProxyLog(9, "send_sync_msg_single: wrapped raw message = %p TOX_FILE_KIND_MESSAGEV2_ANSWER", raw_message2);
         } else { // TOX_FILE_KIND_MESSAGEV2_SEND
             tox_messagev2_sync_wrap(fsize, pubKeyBin, TOX_FILE_KIND_MESSAGEV2_SEND,
                                     rawMsgData, 987, 775, raw_message2, msgid2);
-            toxProxyLog(9, "wrapped raw message = %p TOX_FILE_KIND_MESSAGEV2_SEND", raw_message2);
+            toxProxyLog(9, "send_sync_msg_single: wrapped raw message = %p TOX_FILE_KIND_MESSAGEV2_SEND", raw_message2);
         }
 
+        // save new msgid ----------
+        char msgid2_str[tox_public_key_hex_size + 1];
+        CLEAR(msgid2_str);
+        bin2upHex(msgid2, tox_public_key_size(), msgid2_str, tox_public_key_hex_size);
+
+        char *msgPath_msg_id = calloc(1, 1000);
+        if (msgPath_msg_id)
+        {
+            sprintf(msgPath_msg_id, "%s__%s__", msgPath, msgid2_str);
+            toxProxyLog(9, "send_sync_msg_single: writing new msg_id to file: %s", msgPath_msg_id);
+            FILE *f_msg_id = fopen(msgPath_msg_id, "wb");
+            fwrite(msgid2_str, 1, 1, f_msg_id);
+            fclose(f_msg_id);
+            free(msgPath_msg_id);
+        }
+        // save new msgid ----------
 
         TOX_ERR_FRIEND_SEND_MESSAGE error;
         bool res2 = tox_util_friend_send_sync_message_v2(tox, 0, raw_message2, rawMsgSize2, &error);
-        toxProxyLog(9, "send_sync_msg res=%d; error=%d", (int)res2, error);
+        toxProxyLog(9, "send_sync_msg_single: send_sync_msg res=%d; error=%d", (int)res2, error);
 
         free(rawMsgData);
         free(raw_message2);
@@ -1356,9 +1488,21 @@ void send_sync_msgs_of_friend(Tox *tox, char *pubKeyHex)
     // char new_name_qfd[100];
 
     while ((dp = readdir(dfd)) != NULL) {
-        if (strncmp(dp->d_name, ".", 1) != 0 && strncmp(dp->d_name, "..", 2) != 0) {
-            toxProxyLog(2, "found message by %s with filename %s", pubKeyHex, dp->d_name);
-            send_sync_msg_single(tox, pubKeyHex, dp->d_name);
+        if (dp->d_name)
+        {
+            if (strlen(dp->d_name) > 2)
+            {
+                if (strncmp(dp->d_name, ".", 1) != 0 && strncmp(dp->d_name, "..", 2) != 0)
+                {
+                    int len = strlen(dp->d_name);
+                    const char *last_char = &dp->d_name[len - 1];
+                    if (strncmp(last_char, "_", 1) != 0)
+                    {
+                        toxProxyLog(2, "found message by %s with filename %s", pubKeyHex, dp->d_name);
+                        send_sync_msg_single(tox, pubKeyHex, dp->d_name);
+                    }
+                }
+            }
         }
     }
 
@@ -1527,10 +1671,13 @@ int main(int argc, char *argv[])
 
     while (tox_loop_running) {
         tox_iterate(tox, NULL);
-        // usleep_usec(tox_iteration_interval(tox) * 1000);
-        usleep_usec(50 * 1000);
+        usleep_usec(tox_iteration_interval(tox) * 1000);
+        // usleep_usec(50 * 1000);
 
-        if ((masterIsOnline == true) && (i % 50 == 0)) {
+// HINT: this is only an approximation
+#define RETRY_SYNC_EVERY_X_SECONDS 20
+
+        if ((masterIsOnline == true) && (i % (20 * RETRY_SYNC_EVERY_X_SECONDS) == 0)) {
             send_sync_msgs(tox);
         }
 
