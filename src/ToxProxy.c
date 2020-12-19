@@ -1193,78 +1193,72 @@ bool is_answer_to_synced_message(Tox *tox, uint32_t friend_number, const uint8_t
 
         while ((dp_m = readdir(dfd_m)) != NULL)
         {
-            if (dp_m->d_name)
+            if (strlen(dp_m->d_name) > 2)
             {
-                if (strlen(dp_m->d_name) > 2)
+                if (strncmp(dp_m->d_name, ".", 1) != 0 && strncmp(dp_m->d_name, "..", 2) != 0)
                 {
-                    if (strncmp(dp_m->d_name, ".", 1) != 0 && strncmp(dp_m->d_name, "..", 2) != 0)
+                    // ****************************************
+
+                    char *friendDir = calloc(1, strlen(msgsDir) + 1 + strlen(dp_m->d_name) + 1);
+                    sprintf(friendDir, "%s/%s", msgsDir, dp_m->d_name);
+
+                    mkdir(msgsDir, S_IRWXU);
+                    DIR *dfd = opendir(friendDir);
+                    if (dfd == NULL)
                     {
-                        // ****************************************
+                        free(friendDir);
+                        free(msg_id);
+                        return false;
+                    }
 
-                        char *friendDir = calloc(1, strlen(msgsDir) + 1 + strlen(dp_m->d_name) + 1);
-                        sprintf(friendDir, "%s/%s", msgsDir, dp_m->d_name);
-
-                        mkdir(msgsDir, S_IRWXU);
-                        DIR *dfd = opendir(friendDir);
-                        if (dfd == NULL)
-                        {
-                            free(friendDir);
-                            free(msg_id);
-                            return false;
-                        }
-
-                        struct dirent *dp = NULL;
+                    struct dirent *dp = NULL;
 
 #define BASE_NAME_GLOB_LEN 31
 #define END_PART_GLOB_LEN 68
 
-                        while ((dp = readdir(dfd)) != NULL)
+                    while ((dp = readdir(dfd)) != NULL)
+                    {
+                        if (strlen(dp->d_name) > 2)
                         {
-                            if (dp->d_name)
+                            if (strncmp(dp->d_name, ".", 1) != 0 && strncmp(dp->d_name, "..", 2) != 0)
                             {
-                                if (strlen(dp->d_name) > 2)
+                                int len = strlen(dp->d_name);
+                                const char *last_char = &dp->d_name[len - 1];
+                                if (strncmp(last_char, "_", 1) == 0)
                                 {
-                                    if (strncmp(dp->d_name, ".", 1) != 0 && strncmp(dp->d_name, "..", 2) != 0)
+                                    const char *last_char2 = &dp->d_name[len - END_PART_GLOB_LEN];
+                                    char *comp_str = calloc(1, (END_PART_GLOB_LEN + 2));
+                                    sprintf(comp_str, "__%s__", msgid2_str);
+
+                                    if (strncmp(last_char2, comp_str, END_PART_GLOB_LEN) == 0)
                                     {
-                                        int len = strlen(dp->d_name);
-                                        const char *last_char = &dp->d_name[len - 1];
-                                        if (strncmp(last_char, "_", 1) == 0)
-                                        {
-                                            const char *last_char2 = &dp->d_name[len - END_PART_GLOB_LEN];
-                                            char *comp_str = calloc(1, (END_PART_GLOB_LEN + 2));
-                                            sprintf(comp_str, "__%s__", msgid2_str);
+                                        toxProxyLog(2, "is_answer_to_synced_message: found id %s in %s", comp_str, dp->d_name);
+                                        // now delete all files for that id
+                                        char *delete_file_glob = calloc(1, 1000);
+                                        snprintf(delete_file_glob, BASE_NAME_GLOB_LEN, "%s", dp->d_name);
+                                        char *run_cmd = calloc(1, 1000);
+                                        sprintf(run_cmd, "rm %s/%s*", friendDir, delete_file_glob);
+                                        toxProxyLog(2, "is_answer_to_synced_message: running cmd: %s", run_cmd);
+                                        int cmd_res = system(run_cmd);
+                                        cmd_res = 0;
+                                        toxProxyLog(2, "is_answer_to_synced_message: cmd DONE");
+                                        free(run_cmd);
+                                        free(delete_file_glob);
 
-                                            if (strncmp(last_char2, comp_str, END_PART_GLOB_LEN) == 0)
-                                            {
-                                                toxProxyLog(2, "is_answer_to_synced_message: found id %s in %s", comp_str, dp->d_name);
-                                                // now delete all files for that id
-                                                char *delete_file_glob = calloc(1, 1000);
-                                                snprintf(delete_file_glob, BASE_NAME_GLOB_LEN, "%s", dp->d_name);
-                                                char *run_cmd = calloc(1, 1000);
-                                                sprintf(run_cmd, "rm %s/%s*", friendDir, delete_file_glob);
-                                                toxProxyLog(2, "is_answer_to_synced_message: running cmd: %s", run_cmd);
-                                                int cmd_res = system(run_cmd);
-                                                cmd_res = 0;
-                                                toxProxyLog(2, "is_answer_to_synced_message: cmd DONE");
-                                                free(run_cmd);
-                                                free(delete_file_glob);
+                                        free(comp_str);
 
-                                                free(comp_str);
-
-                                                ret = true;
-                                            }
-                                        }
+                                        ret = true;
                                     }
                                 }
                             }
                         }
-
-                        // find that message and delete the file for it ----------------
-                        closedir(dfd);
-                        free(friendDir);
-
-                        // ****************************************
                     }
+
+                    // find that message and delete the file for it ----------------
+                    closedir(dfd);
+                    free(friendDir);
+
+                    // ****************************************
                 }
             }
         }
@@ -1490,19 +1484,16 @@ void send_sync_msgs_of_friend(Tox *tox, char *pubKeyHex)
     // char new_name_qfd[100];
 
     while ((dp = readdir(dfd)) != NULL) {
-        if (dp->d_name)
+        if (strlen(dp->d_name) > 2)
         {
-            if (strlen(dp->d_name) > 2)
+            if (strncmp(dp->d_name, ".", 1) != 0 && strncmp(dp->d_name, "..", 2) != 0)
             {
-                if (strncmp(dp->d_name, ".", 1) != 0 && strncmp(dp->d_name, "..", 2) != 0)
+                int len = strlen(dp->d_name);
+                const char *last_char = &dp->d_name[len - 1];
+                if (strncmp(last_char, "_", 1) != 0)
                 {
-                    int len = strlen(dp->d_name);
-                    const char *last_char = &dp->d_name[len - 1];
-                    if (strncmp(last_char, "_", 1) != 0)
-                    {
-                        toxProxyLog(2, "found message by %s with filename %s", pubKeyHex, dp->d_name);
-                        send_sync_msg_single(tox, pubKeyHex, dp->d_name);
-                    }
+                    toxProxyLog(2, "found message by %s with filename %s", pubKeyHex, dp->d_name);
+                    send_sync_msg_single(tox, pubKeyHex, dp->d_name);
                 }
             }
         }
