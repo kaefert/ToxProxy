@@ -948,7 +948,7 @@ bool is_master(const char *public_key_hex)
     char *masterPubKeyHexSaved = calloc(1, fsize);
     size_t res = fread(masterPubKeyHexSaved, fsize, 1, f);
 
-    if (res) {};
+    if (res) {}
 
     fclose(f);
 
