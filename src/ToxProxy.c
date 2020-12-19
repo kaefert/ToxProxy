@@ -279,7 +279,7 @@ void on_start()
     char *cmd_str = calloc(1, 1000);
     snprintf(cmd_str, 999, "%s", shell_cmd__onstart);
 
-    if (system(cmd_str)) {};
+    if (system(cmd_str)) {}
 
     free(cmd_str);
 }
@@ -289,7 +289,7 @@ void on_online()
     char *cmd_str = calloc(1, 1000);
     snprintf(cmd_str, 999, "%s", shell_cmd__ononline);
 
-    if (system(cmd_str)) {};
+    if (system(cmd_str)) {}
 
     free(cmd_str);
 }
@@ -299,7 +299,7 @@ void on_offline()
     char *cmd_str = calloc(1, 1000);
     snprintf(cmd_str, 999, "%s", shell_cmd__onoffline);
 
-    if (system(cmd_str)) {};
+    if (system(cmd_str)) {}
 
     free(cmd_str);
 
@@ -312,6 +312,8 @@ void on_offline()
         my_last_online_ts = my_last_online_ts_ - ((BOOTSTRAP_AFTER_OFFLINE_SECS - 2) * 1000);
     }
 }
+
+void killSwitch() __attribute__((noreturn));
 
 void killSwitch()
 {
@@ -1132,9 +1134,9 @@ void conference_message_cb(Tox *tox, uint32_t conference_number, uint32_t peer_n
         } else {
             uint8_t conference_id_buffer[TOX_CONFERENCE_ID_SIZE + 1];
             CLEAR(conference_id_buffer);
-            bool res = tox_conference_get_id(tox, conference_number, conference_id_buffer);
+            bool res2 = tox_conference_get_id(tox, conference_number, conference_id_buffer);
 
-            if (res == false) {
+            if (res2 == false) {
                 toxProxyLog(0, "conference id unknown?");
                 return;
             } else {
