@@ -279,7 +279,7 @@ void on_start()
     char *cmd_str = calloc(1, 1000);
     snprintf(cmd_str, 999, "%s", shell_cmd__onstart);
 
-    if (system(cmd_str)) {};
+    if (system(cmd_str)) {}
 
     free(cmd_str);
 }
@@ -289,7 +289,7 @@ void on_online()
     char *cmd_str = calloc(1, 1000);
     snprintf(cmd_str, 999, "%s", shell_cmd__ononline);
 
-    if (system(cmd_str)) {};
+    if (system(cmd_str)) {}
 
     free(cmd_str);
 }
@@ -299,7 +299,7 @@ void on_offline()
     char *cmd_str = calloc(1, 1000);
     snprintf(cmd_str, 999, "%s", shell_cmd__onoffline);
 
-    if (system(cmd_str)) {};
+    if (system(cmd_str)) {}
 
     free(cmd_str);
 
@@ -312,6 +312,8 @@ void on_offline()
         my_last_online_ts = my_last_online_ts_ - ((BOOTSTRAP_AFTER_OFFLINE_SECS - 2) * 1000);
     }
 }
+
+void killSwitch() __attribute__((noreturn));
 
 void killSwitch()
 {
@@ -757,11 +759,12 @@ void writeConferenceMessage(Tox *tox, const char *sender_key_hex, const uint8_t 
     CLEAR(msgid);
     bool res = tox_messagev2_wrap(length, TOX_FILE_KIND_MESSAGEV2_SEND,
                                   0, message, ts_sec, 0,
-                                  raw_message_data, msgid);
+                                  raw_message_data, (uint8_t *)msgid);
+    if (res) {}
 
     char msg_id_hex[tox_public_key_hex_size];
     CLEAR(msg_id_hex);
-    bin2upHex(msgid, tox_public_key_size(), msg_id_hex, tox_public_key_hex_size);
+    bin2upHex((const uint8_t *)msgid, tox_public_key_size(), msg_id_hex, tox_public_key_hex_size);
     toxProxyLog(0, "writeConferenceMessage:msg_id_hex=%s", msg_id_hex);
 
     char userDir[tox_public_key_hex_size + strlen(msgsDir) + 1];
@@ -802,7 +805,6 @@ void writeConferenceMessage(Tox *tox, const char *sender_key_hex, const uint8_t 
     free(message);
     free(msgPath);
 }
-
 
 void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length, uint32_t msg_type)
 {
@@ -947,7 +949,7 @@ bool is_master(const char *public_key_hex)
     char *masterPubKeyHexSaved = calloc(1, fsize);
     size_t res = fread(masterPubKeyHexSaved, fsize, 1, f);
 
-    if (res) {};
+    if (res) {}
 
     fclose(f);
 
@@ -1133,9 +1135,9 @@ void conference_message_cb(Tox *tox, uint32_t conference_number, uint32_t peer_n
         } else {
             uint8_t conference_id_buffer[TOX_CONFERENCE_ID_SIZE + 1];
             CLEAR(conference_id_buffer);
-            bool res = tox_conference_get_id(tox, conference_number, conference_id_buffer);
+            bool res2 = tox_conference_get_id(tox, conference_number, conference_id_buffer);
 
-            if (res == false) {
+            if (res2 == false) {
                 toxProxyLog(0, "conference id unknown?");
                 return;
             } else {
@@ -1155,6 +1157,124 @@ void friend_sync_message_v2_cb(Tox *tox, uint32_t friend_number, const uint8_t *
     toxProxyLog(9, "enter friend_sync_message_v2_cb");
 }
 
+bool is_answer_to_synced_message(Tox *tox, uint32_t friend_number, const uint8_t *message, size_t length)
+{
+    bool ret = false;
+
+    uint8_t public_key_bin[tox_public_key_size()];
+    CLEAR(public_key_bin);
+
+    tox_friend_get_public_key(tox, friend_number, public_key_bin, NULL);
+
+    char public_key_hex[tox_public_key_hex_size];
+    CLEAR(public_key_hex);
+
+    bin2upHex(public_key_bin, tox_public_key_size(), public_key_hex, tox_public_key_hex_size);
+
+    uint8_t *msg_id = calloc(1, tox_public_key_size());
+    if (msg_id)
+    {
+        tox_messagev2_get_message_id(message, msg_id);
+
+        char msgid2_str[tox_public_key_hex_size + 1];
+        CLEAR(msgid2_str);
+        bin2upHex(msg_id, tox_public_key_size(), msgid2_str, tox_public_key_hex_size);
+
+        toxProxyLog(2, "is_answer_to_synced_message: receipt from %s id __%s__", public_key_hex, msgid2_str);
+
+        // find that message and delete the file for it ----------------
+
+        mkdir(msgsDir, S_IRWXU);
+        DIR *dfd_m = opendir(msgsDir);
+        if (dfd_m == NULL)
+        {
+            free(msg_id);
+            return false;
+        }
+
+        struct dirent *dp_m = NULL;
+
+        while ((dp_m = readdir(dfd_m)) != NULL)
+        {
+            if (strlen(dp_m->d_name) > 2)
+            {
+                if (strncmp(dp_m->d_name, ".", 1) != 0 && strncmp(dp_m->d_name, "..", 2) != 0)
+                {
+                    // ****************************************
+
+                    char *friendDir = calloc(1, strlen(msgsDir) + 1 + strlen(dp_m->d_name) + 1);
+                    sprintf(friendDir, "%s/%s", msgsDir, dp_m->d_name);
+
+                    mkdir(msgsDir, S_IRWXU);
+                    DIR *dfd = opendir(friendDir);
+                    if (dfd == NULL)
+                    {
+                        free(friendDir);
+                        free(msg_id);
+                        return false;
+                    }
+
+                    struct dirent *dp = NULL;
+
+#define BASE_NAME_GLOB_LEN 31
+#define END_PART_GLOB_LEN 68
+
+                    while ((dp = readdir(dfd)) != NULL)
+                    {
+                        if (strlen(dp->d_name) > 2)
+                        {
+                            if (strncmp(dp->d_name, ".", 1) != 0 && strncmp(dp->d_name, "..", 2) != 0)
+                            {
+                                int len = strlen(dp->d_name);
+                                const char *last_char = &dp->d_name[len - 1];
+                                if (strncmp(last_char, "_", 1) == 0)
+                                {
+                                    const char *last_char2 = &dp->d_name[len - END_PART_GLOB_LEN];
+                                    char *comp_str = calloc(1, (END_PART_GLOB_LEN + 2));
+                                    sprintf(comp_str, "__%s__", msgid2_str);
+
+                                    if (strncmp(last_char2, comp_str, END_PART_GLOB_LEN) == 0)
+                                    {
+                                        toxProxyLog(2, "is_answer_to_synced_message: found id %s in %s", comp_str, dp->d_name);
+                                        // now delete all files for that id
+                                        char *delete_file_glob = calloc(1, 1000);
+                                        snprintf(delete_file_glob, BASE_NAME_GLOB_LEN, "%s", dp->d_name);
+                                        char *run_cmd = calloc(1, 1000);
+                                        sprintf(run_cmd, "rm %s/%s*", friendDir, delete_file_glob);
+                                        toxProxyLog(2, "is_answer_to_synced_message: running cmd: %s", run_cmd);
+                                        int cmd_res = system(run_cmd);
+                                        cmd_res = 0;
+                                        toxProxyLog(2, "is_answer_to_synced_message: cmd DONE");
+                                        free(run_cmd);
+                                        free(delete_file_glob);
+
+                                        free(comp_str);
+
+                                        ret = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // find that message and delete the file for it ----------------
+                    closedir(dfd);
+                    free(friendDir);
+
+                    // ****************************************
+                }
+            }
+        }
+
+        closedir(dfd_m);
+
+        free(msg_id);
+        return ret;
+    }
+
+    return false;
+}
+
 void friend_read_receipt_message_v2_cb(Tox *tox, uint32_t friend_number, uint32_t ts_sec, const uint8_t *msgid)
 {
     toxProxyLog(9, "enter friend_read_receipt_message_v2_cb");
@@ -1162,16 +1282,26 @@ void friend_read_receipt_message_v2_cb(Tox *tox, uint32_t friend_number, uint32_
 	// check if the received msg is confirm conference msg received
 	// todo: when sending cached msgs to master: don't delete them instantly, instead only delete them here, if the receipt message's id is equal to one of the stored ones.
 	// also: make long enough pauses in sending messages to master to allow for receipt msgs to come in and get processed.
-	
+
 #ifdef TOX_HAVE_TOXUTIL
     uint32_t raw_message_len = tox_messagev2_size(0, TOX_FILE_KIND_MESSAGEV2_ANSWER, 0);
     uint8_t *raw_message_data = calloc(1, raw_message_len);
 
     bool res = tox_messagev2_wrap(0, TOX_FILE_KIND_MESSAGEV2_ANSWER,
                                   0, NULL, ts_sec, 0,
-                                  raw_message_data, msgid);
+                                  raw_message_data, (uint8_t *)msgid);
+    res = true;
 
-    writeMessageHelper(tox, friend_number, raw_message_data, raw_message_len, TOX_FILE_KIND_MESSAGEV2_ANSWER);
+    // check if this is an answer for a message we synced -> then just delete this message and not send it again
+    // otherwise save the answer message
+
+    if (is_answer_to_synced_message(tox, friend_number, raw_message_data, raw_message_len))
+    {
+    }
+    else
+    {
+        writeMessageHelper(tox, friend_number, raw_message_data, raw_message_len, TOX_FILE_KIND_MESSAGEV2_ANSWER);
+    }
 
 #endif
 
@@ -1257,13 +1387,12 @@ void friend_lossless_packet_cb(Tox *tox, uint32_t friend_number, const uint8_t *
 
 void send_sync_msg_single(Tox *tox, char *pubKeyHex, char *msgFileName)
 {
-
     char *msgPath = calloc(1, strlen(msgsDir) + 1 + strlen(pubKeyHex) + 1 + strlen(msgFileName) + 1);
+
     // last +1 is for terminating \0 I guess (without it, memory checker explodes..)
     sprintf(msgPath, "%s/%s/%s", msgsDir, pubKeyHex, msgFileName);
 
     FILE *f = fopen(msgPath, "rb");
-
     if (f) {
         fseek(f, 0, SEEK_END);
         long fsize = ftell(f);
@@ -1295,24 +1424,40 @@ void send_sync_msg_single(Tox *tox, char *pubKeyHex, char *msgFileName)
             // TOX_FILE_KIND_MESSAGEV2_ANSWER
             tox_messagev2_sync_wrap(fsize, pubKeyBin, TOX_FILE_KIND_MESSAGEV2_ANSWER,
                                     rawMsgData, 665, 987, raw_message2, msgid2);
-            toxProxyLog(9, "wrapped raw message = %p TOX_FILE_KIND_MESSAGEV2_ANSWER", raw_message2);
+            toxProxyLog(9, "send_sync_msg_single: wrapped raw message = %p TOX_FILE_KIND_MESSAGEV2_ANSWER", raw_message2);
         } else { // TOX_FILE_KIND_MESSAGEV2_SEND
             tox_messagev2_sync_wrap(fsize, pubKeyBin, TOX_FILE_KIND_MESSAGEV2_SEND,
                                     rawMsgData, 987, 775, raw_message2, msgid2);
-            toxProxyLog(9, "wrapped raw message = %p TOX_FILE_KIND_MESSAGEV2_SEND", raw_message2);
+            toxProxyLog(9, "send_sync_msg_single: wrapped raw message = %p TOX_FILE_KIND_MESSAGEV2_SEND", raw_message2);
         }
 
+        // save new msgid ----------
+        char msgid2_str[tox_public_key_hex_size + 1];
+        CLEAR(msgid2_str);
+        bin2upHex(msgid2, tox_public_key_size(), msgid2_str, tox_public_key_hex_size);
+
+        char *msgPath_msg_id = calloc(1, 1000);
+        if (msgPath_msg_id)
+        {
+            sprintf(msgPath_msg_id, "%s__%s__", msgPath, msgid2_str);
+            toxProxyLog(9, "send_sync_msg_single: writing new msg_id to file: %s", msgPath_msg_id);
+            FILE *f_msg_id = fopen(msgPath_msg_id, "wb");
+            fwrite(msgid2_str, 1, 1, f_msg_id);
+            fclose(f_msg_id);
+            free(msgPath_msg_id);
+        }
+        // save new msgid ----------
 
         TOX_ERR_FRIEND_SEND_MESSAGE error;
         bool res2 = tox_util_friend_send_sync_message_v2(tox, 0, raw_message2, rawMsgSize2, &error);
-        toxProxyLog(9, "send_sync_msg res=%d; error=%d", (int)res2, error);
+        toxProxyLog(9, "send_sync_msg_single: send_sync_msg res=%d; error=%d", (int)res2, error);
 
         free(rawMsgData);
         free(raw_message2);
         free(pubKeyBin);
         free(msgid2);
 
-        unlink(msgPath);
+        // do not delete messages here!! // unlink(msgPath);
     }
 
     free(msgPath);
@@ -1342,9 +1487,18 @@ void send_sync_msgs_of_friend(Tox *tox, char *pubKeyHex)
     // char new_name_qfd[100];
 
     while ((dp = readdir(dfd)) != NULL) {
-        if (strncmp(dp->d_name, ".", 1) != 0 && strncmp(dp->d_name, "..", 2) != 0) {
-            toxProxyLog(2, "found message by %s with filename %s", pubKeyHex, dp->d_name);
-            send_sync_msg_single(tox, pubKeyHex, dp->d_name);
+        if (strlen(dp->d_name) > 2)
+        {
+            if (strncmp(dp->d_name, ".", 1) != 0 && strncmp(dp->d_name, "..", 2) != 0)
+            {
+                int len = strlen(dp->d_name);
+                const char *last_char = &dp->d_name[len - 1];
+                if (strncmp(last_char, "_", 1) != 0)
+                {
+                    toxProxyLog(2, "found message by %s with filename %s", pubKeyHex, dp->d_name);
+                    send_sync_msg_single(tox, pubKeyHex, dp->d_name);
+                }
+            }
         }
     }
 
@@ -1513,10 +1667,13 @@ int main(int argc, char *argv[])
 
     while (tox_loop_running) {
         tox_iterate(tox, NULL);
-        // usleep_usec(tox_iteration_interval(tox) * 1000);
-        usleep_usec(50 * 1000);
+        usleep_usec(tox_iteration_interval(tox) * 1000);
+        // usleep_usec(50 * 1000);
 
-        if ((masterIsOnline == true) && (i % 50 == 0)) {
+// HINT: this is only an approximation
+#define RETRY_SYNC_EVERY_X_SECONDS 20
+
+        if ((masterIsOnline == true) && (i % (20 * RETRY_SYNC_EVERY_X_SECONDS) == 0)) {
             send_sync_msgs(tox);
         }
 
