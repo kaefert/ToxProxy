@@ -760,6 +760,7 @@ void writeConferenceMessage(Tox *tox, const char *sender_key_hex, const uint8_t 
     bool res = tox_messagev2_wrap(length, TOX_FILE_KIND_MESSAGEV2_SEND,
                                   0, message, ts_sec, 0,
                                   raw_message_data, (uint8_t *)msgid);
+    if (res) {}
 
     char msg_id_hex[tox_public_key_hex_size];
     CLEAR(msg_id_hex);
