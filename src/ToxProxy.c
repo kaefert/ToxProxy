@@ -47,6 +47,7 @@ Zoff sagt: wichtig: erste relay message am 20.08.2019 um 20:31 gesendet und rich
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <getopt.h>
@@ -55,6 +56,9 @@ Zoff sagt: wichtig: erste relay message am 20.08.2019 um 20:31 gesendet und rich
 #include <errno.h>
 #include <limits.h>
 #include <stdbool.h>
+#include <netdb.h>
+#include <netinet/in.h>
+
 
 #include <pthread.h>
 
@@ -74,6 +78,8 @@ Zoff sagt: wichtig: erste relay message am 20.08.2019 um 20:31 gesendet und rich
 #ifdef TOX_HAVE_TOXUTIL
 #include <tox/toxutil.h>
 #endif
+
+#include "push_server_config.h"
 
 // timestamps for printf output
 #include <time.h>
@@ -801,6 +807,8 @@ void writeConferenceMessage(Tox *tox, const char *sender_key_hex, const uint8_t 
         fclose(f);
     }
 
+    ping_push_service();
+
     free(raw_message_data);
     free(message);
     free(msgPath);
@@ -851,6 +859,8 @@ void writeMessage(char *sender_key_hex, const uint8_t *message, size_t length, u
         fwrite(message, length, 1, f);
         fclose(f);
     }
+
+    ping_push_service();
 
     free(msgPath);
 }
@@ -1527,6 +1537,56 @@ void send_sync_msgs(Tox *tox)
     }
 
     closedir(dfd);
+}
+
+int ping_push_service()
+{
+    int sockfd = 0;
+    int numbytes = 0;
+    char buf[PUSH__MAXDATASIZE + 1];
+    struct hostent *he = NULL;
+    struct sockaddr_in their_addr;
+
+    memset(bug, 0, (PUSH__MAXDATASIZE + 1));
+
+    if ((he = gethostbyname(PUSH__DST_HOST)) == NULL)
+    {
+        toxProxyLog(9, "gethostbyname");
+        return 1;
+    }
+
+    if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+    {
+        toxProxyLog(9, "socket");
+        return 1;
+    }
+
+    their_addr.sin_family = AF_INET;
+    their_addr.sin_port = htons(PUSH__DST_PORT);
+    their_addr.sin_addr = *((struct in_addr *)he->h_addr);
+    bzero(&(their_addr.sin_zero), 8);
+
+    if (connect(sockfd, (struct sockaddr *)&their_addr, sizeof(struct sockaddr)) == -1)
+    {
+        toxProxyLog(9, "connect");
+        return 1;
+    }
+
+    if (send(sockfd, device_token, strlen(PUSH__device_token), 0) == -1)
+    {
+        toxProxyLog(9, "send");
+        return 1;
+    }
+
+    if ((numbytes = recv(sockfd, buf, MAXDATASIZE, 0)) == -1)
+    {
+        toxProxyLog(9, "recv");
+        return 1;
+    }
+
+    close(sockfd);
+
+    return 0;
 }
 
 int main(int argc, char *argv[])
