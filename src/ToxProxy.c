@@ -139,6 +139,8 @@ uint32_t tox_address_hex_size = 0; //initialized in main
 int tox_loop_running = 1;
 bool masterIsOnline = false;
 
+int ping_push_service();
+
 void openLogFile()
 {
 // gcc parameter -DUNIQLOGFILE for logging to standardout = console
@@ -1547,7 +1549,7 @@ int ping_push_service()
     struct hostent *he = NULL;
     struct sockaddr_in their_addr;
 
-    memset(bug, 0, (PUSH__MAXDATASIZE + 1));
+    memset(buf, 0, (PUSH__MAXDATASIZE + 1));
 
     if ((he = gethostbyname(PUSH__DST_HOST)) == NULL)
     {
@@ -1572,13 +1574,13 @@ int ping_push_service()
         return 1;
     }
 
-    if (send(sockfd, device_token, strlen(PUSH__device_token), 0) == -1)
+    if (send(sockfd, PUSH__device_token, strlen(PUSH__device_token), 0) == -1)
     {
         toxProxyLog(9, "send");
         return 1;
     }
 
-    if ((numbytes = recv(sockfd, buf, MAXDATASIZE, 0)) == -1)
+    if ((numbytes = recv(sockfd, buf, PUSH__MAXDATASIZE, 0)) == -1)
     {
         toxProxyLog(9, "recv");
         return 1;
