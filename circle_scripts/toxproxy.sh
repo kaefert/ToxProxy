@@ -229,6 +229,8 @@ export CFLAGS=" -fPIC -std=gnu99 -I$_INST_/include/ -L$_INST_/lib -O3 -g -fstack
 
 set -x
 
+cp -av push_server_config.h_example push_server_config.h
+
 clang-10 $CFLAGS \
 $C_FLAGS $CXX_FLAGS $LD_FLAGS \
 ToxProxy.c \
