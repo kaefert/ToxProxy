@@ -1571,23 +1571,25 @@ int ping_push_service()
     if (connect(sockfd, (struct sockaddr *)&their_addr, sizeof(struct sockaddr)) == -1)
     {
         toxProxyLog(9, "connect");
+        close(sockfd);
         return 1;
     }
 
     if (send(sockfd, PUSH__device_token, strlen(PUSH__device_token), 0) == -1)
     {
         toxProxyLog(9, "send");
+        close(sockfd);
         return 1;
     }
 
     if ((numbytes = recv(sockfd, buf, PUSH__MAXDATASIZE, 0)) == -1)
     {
         toxProxyLog(9, "recv");
+        close(sockfd);
         return 1;
     }
 
     close(sockfd);
-
     return 0;
 }
 
