@@ -89,6 +89,8 @@ Zoff sagt: wichtig: erste relay message am 20.08.2019 um 20:31 gesendet und rich
 #include <sys/stat.h>
 #include <sys/types.h>
 
+static char *NOTIFICATION__device_token = NULL;
+
 typedef struct DHT_node {
     const char *ip;
     uint16_t port;
@@ -105,7 +107,8 @@ typedef enum CONTROL_PROXY_MESSAGE_TYPE {
     CONTROL_PROXY_MESSAGE_TYPE_FRIEND_PUBKEY_FOR_PROXY = 175,
     CONTROL_PROXY_MESSAGE_TYPE_PROXY_PUBKEY_FOR_FRIEND = 176,
     CONTROL_PROXY_MESSAGE_TYPE_ALL_MESSAGES_SENT = 177,
-    CONTROL_PROXY_MESSAGE_TYPE_PROXY_KILL_SWITCH = 178
+    CONTROL_PROXY_MESSAGE_TYPE_PROXY_KILL_SWITCH = 178,
+    CONTROL_PROXY_MESSAGE_TYPE_NOTIFICATION_TOKEN = 179
 } CONTROL_PROXY_MESSAGE_TYPE;
 
 FILE *logfile = NULL;
@@ -1379,6 +1382,15 @@ void friend_lossless_packet_cb(Tox *tox, uint32_t friend_number, const uint8_t *
 
     if (data[0] == CONTROL_PROXY_MESSAGE_TYPE_PROXY_KILL_SWITCH) {
         killSwitch();
+    } else if (data[0] == CONTROL_PROXY_MESSAGE_TYPE_NOTIFICATION_TOKEN) {
+        if ((length > 10) && (length < 300))
+        {
+            toxProxyLog(0, "received CONTROL_PROXY_MESSAGE_TYPE_NOTIFICATION_TOKEN message");
+            NOTIFICATION__device_token = calloc(1, (length + 1));
+            memcpy(NOTIFICATION__device_token, (data + 1), (length - 1));
+            toxProxyLog(0, "CONTROL_PROXY_MESSAGE_TYPE_NOTIFICATION_TOKEN: %s", NOTIFICATION__device_token);
+        }
+        return;
     } else if (data[0] == CONTROL_PROXY_MESSAGE_TYPE_FRIEND_PUBKEY_FOR_PROXY) {
         if (length != tox_public_key_size() + 1) {
             toxProxyLog(0, "received ControlProxyMessageType_pubKey message with wrong size");
@@ -1543,6 +1555,11 @@ void send_sync_msgs(Tox *tox)
 
 int ping_push_service()
 {
+    if (!NOTIFICATION__device_token)
+    {
+        return 1;
+    }
+
     int sockfd = 0;
     int numbytes = 0;
     char buf[PUSH__MAXDATASIZE + 1];
@@ -1575,7 +1592,7 @@ int ping_push_service()
         return 1;
     }
 
-    if (send(sockfd, PUSH__device_token, strlen(PUSH__device_token), 0) == -1)
+    if (send(sockfd, NOTIFICATION__device_token, strlen(NOTIFICATION__device_token), 0) == -1)
     {
         toxProxyLog(9, "send");
         close(sockfd);
@@ -1655,6 +1672,7 @@ int main(int argc, char *argv[])
     tox_callback_self_connection_status(tox, tox_utils_self_connection_status_cb);
     tox_utils_callback_friend_connection_status(tox, friendlist_onConnectionChange);
     tox_callback_friend_connection_status(tox, tox_utils_friend_connection_status_cb);
+    tox_utils_callback_friend_lossless_packet(tox, friend_lossless_packet_cb);
     tox_callback_friend_lossless_packet(tox, tox_utils_friend_lossless_packet_cb);
     // tox_utils_callback_file_recv_control(tox, on_file_control);
     tox_callback_file_recv_control(tox, tox_utils_file_recv_control_cb);
@@ -1675,8 +1693,6 @@ int main(int argc, char *argv[])
     tox_callback_self_connection_status(tox, self_connection_status_cb);
     tox_callback_friend_connection_status(tox, friendlist_onConnectionChange);
 #endif
-
-    tox_callback_friend_lossless_packet(tox, friend_lossless_packet_cb);
 
     updateToxSavedata(tox);
 
