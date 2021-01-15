@@ -1376,7 +1376,14 @@ void friend_lossless_packet_cb(Tox *tox, uint32_t friend_number, const uint8_t *
     }
 
     if (!is_master_friendnumber(tox, friend_number)) {
-        toxProxyLog(0, "received lossless package from somebody who's not master!");
+        if (length > 0)
+        {
+            toxProxyLog(0, "received lossless package from somebody who's not master! : id=%d", (int)data[0]);
+        }
+        else
+        {
+            toxProxyLog(0, "received lossless package from somebody who's not master!");
+        }
         return;
     }
 
