@@ -1037,9 +1037,10 @@ void friend_request_cb(Tox *tox, const uint8_t *public_key, const uint8_t *messa
 void friend_message_cb(Tox *tox, uint32_t friend_number, TOX_MESSAGE_TYPE type, const uint8_t *message, size_t length,
                        void *user_data)
 {
-
     char *default_msg = "YOU are using the old Message format! this is not supported!";
     tox_friend_send_message(tox, friend_number, type, (uint8_t *) default_msg, strlen(default_msg), NULL);
+
+    toxProxyLog(2, "YOU are using the old Message: fnum=%d", friend_number);
 }
 
 //
@@ -1355,6 +1356,7 @@ void friend_message_v2_cb(Tox *tox, uint32_t friend_number, const uint8_t *raw_m
                 // send_text_message_to_friend(tox, friend_number, "Sorry, but this command has not been understood, please check the implementation or contact the developer.");
             }
         } else {
+            toxProxyLog(9, "call writeMessageHelper()");
             // nicht vom master, also wohl ein freund vom master.
             writeMessageHelper(tox, friend_number, raw_message, raw_message_len, TOX_FILE_KIND_MESSAGEV2_SEND);
             //TODO FIXME send acknowledgment here (message v2 ohne text mit wrapper = kompliziert laut tox, 3 bis 4 functions aufruf notwendig)
@@ -1376,7 +1378,14 @@ void friend_lossless_packet_cb(Tox *tox, uint32_t friend_number, const uint8_t *
     }
 
     if (!is_master_friendnumber(tox, friend_number)) {
-        toxProxyLog(0, "received lossless package from somebody who's not master!");
+        if (length > 0)
+        {
+            toxProxyLog(0, "received lossless package from somebody who's not master! : id=%d", (int)data[0]);
+        }
+        else
+        {
+            toxProxyLog(0, "received lossless package from somebody who's not master!");
+        }
         return;
     }
 
@@ -1389,6 +1398,7 @@ void friend_lossless_packet_cb(Tox *tox, uint32_t friend_number, const uint8_t *
             NOTIFICATION__device_token = calloc(1, (length + 1));
             memcpy(NOTIFICATION__device_token, (data + 1), (length - 1));
             toxProxyLog(0, "CONTROL_PROXY_MESSAGE_TYPE_NOTIFICATION_TOKEN: %s", NOTIFICATION__device_token);
+            // TODO: save notification token to file, and read from file when ToxProxy is restarted
         }
         return;
     } else if (data[0] == CONTROL_PROXY_MESSAGE_TYPE_FRIEND_PUBKEY_FOR_PROXY) {
@@ -1555,8 +1565,11 @@ void send_sync_msgs(Tox *tox)
 
 int ping_push_service()
 {
+    toxProxyLog(9, "ping_push_service");
+
     if (!NOTIFICATION__device_token)
     {
+        toxProxyLog(9, "ping_push_service: No NOTIFICATION__device_token");
         return 1;
     }
 
@@ -1607,6 +1620,9 @@ int ping_push_service()
     }
 
     close(sockfd);
+
+    toxProxyLog(9, "ping_push_service:PING sent");
+
     return 0;
 }
 
